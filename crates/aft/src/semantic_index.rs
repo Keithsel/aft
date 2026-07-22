@@ -15,6 +15,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
+use std::error::Error;
 use std::fmt::Display;
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Cursor, Read, Write};
@@ -542,6 +543,12 @@ fn is_retryable_embedding_error(error: &reqwest::Error) -> bool {
 /// failures and timeouts; query requests use the same classification but have a
 /// one-attempt policy.
 fn embedding_send_error_is_transient(error: &reqwest::Error) -> bool {
+    // TLS trust failures are reported by reqwest as connect errors, but they
+    // cannot recover by retrying. Check the source chain before the broad
+    // connect/timeout classification so private-CA failures become terminal.
+    if embedding_error_is_certificate_trust_failure(error) {
+        return false;
+    }
     if error.is_connect() || error.is_timeout() {
         return true;
     }
@@ -578,6 +585,31 @@ fn embedding_send_error_is_transient(error: &reqwest::Error) -> bool {
         source = std::error::Error::source(inner);
     }
     false
+}
+
+fn render_error_source_chain(error: &dyn Error) -> String {
+    let mut rendered = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        rendered.push_str(": ");
+        rendered.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    rendered
+}
+
+fn embedding_error_is_certificate_trust_failure(error: &reqwest::Error) -> bool {
+    let rendered = render_error_source_chain(error).to_ascii_lowercase();
+    [
+        "unknownissuer",
+        "unknown issuer",
+        "invalid peer certificate",
+        "certificate verify failed",
+        "certificate validation failed",
+        "certificate error",
+    ]
+    .iter()
+    .any(|marker| rendered.contains(marker))
 }
 
 fn embedding_response_read_error_is_transient(error: &reqwest::Error) -> bool {
@@ -640,7 +672,10 @@ where
                 } else {
                     ""
                 };
-                return Err(format!("{marker}{backend_label} request failed: {error}"));
+                return Err(format!(
+                    "{marker}{backend_label} request failed: {}",
+                    render_error_source_chain(&error)
+                ));
             }
         };
 
@@ -658,7 +693,8 @@ where
                     ""
                 };
                 return Err(format!(
-                    "{marker}{backend_label} response read failed: {error}"
+                    "{marker}{backend_label} response read failed: {}",
+                    render_error_source_chain(&error)
                 ));
             }
         };
@@ -4469,7 +4505,9 @@ mod tests {
     use crate::parser::FileParser;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::process::Command;
     use std::thread;
+    use tempfile::NamedTempFile;
 
     // Only the unix-gated baseline test consumes these (see its comment for
     // why Windows cannot reproduce the hash); keep Windows -D warnings clean.
@@ -4657,6 +4695,155 @@ mod tests {
         assert!(!is_retryable_embedding_status(
             reqwest::StatusCode::BAD_REQUEST
         ));
+    }
+
+    fn install_test_crypto_provider() {
+        // Reqwest and the direct test-server dependency enable different rustls
+        // providers, so select one explicitly before either side builds TLS.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
+    fn start_native_roots_tls_server() -> (String, NamedTempFile, thread::JoinHandle<()>) {
+        install_test_crypto_provider();
+        let ca_key = rcgen::KeyPair::generate().expect("generate test CA key");
+        let mut ca_params = rcgen::CertificateParams::default();
+        ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        ca_params.key_usages = vec![
+            rcgen::KeyUsagePurpose::KeyCertSign,
+            rcgen::KeyUsagePurpose::DigitalSignature,
+        ];
+        let ca_cert = ca_params
+            .self_signed(&ca_key)
+            .expect("generate test CA certificate");
+
+        let leaf_key = rcgen::KeyPair::generate().expect("generate test leaf key");
+        let mut leaf_params = rcgen::CertificateParams::new(vec!["localhost".to_string()])
+            .expect("generate leaf parameters");
+        leaf_params.key_usages = vec![rcgen::KeyUsagePurpose::DigitalSignature];
+        leaf_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
+        let leaf_cert = leaf_params
+            .signed_by(&leaf_key, &ca_cert, &ca_key)
+            .expect("sign test leaf certificate");
+
+        let mut ca_file = NamedTempFile::new().expect("create test CA file");
+        ca_file
+            .write_all(ca_cert.pem().as_bytes())
+            .expect("write test CA certificate");
+
+        let server_config = Arc::new(
+            rustls::ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(
+                    vec![rustls::pki_types::CertificateDer::from(
+                        leaf_cert.der().to_vec(),
+                    )],
+                    rustls::pki_types::PrivateKeyDer::Pkcs8(
+                        rustls::pki_types::PrivatePkcs8KeyDer::from(leaf_key.serialize_der()),
+                    ),
+                )
+                .expect("build test TLS server configuration"),
+        );
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test TLS server");
+        let address = listener.local_addr().expect("read test TLS server address");
+        let url = format!("https://localhost:{}/v1/embeddings", address.port());
+        let handle = thread::spawn(move || {
+            // The two child processes below intentionally exercise both trust
+            // paths. The first handshake fails with UnknownIssuer; the second
+            // succeeds after SSL_CERT_FILE supplies the throwaway CA.
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().expect("accept test TLS connection");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .expect("set test TLS read timeout");
+                let connection = rustls::ServerConnection::new(server_config.clone())
+                    .expect("create test TLS server connection");
+                let mut tls_stream = rustls::StreamOwned::new(connection, stream);
+                let mut request = [0_u8; 4096];
+                if tls_stream.read(&mut request).is_ok() {
+                    let body = r#"{"data":[],"model":"test","object":"list"}"#;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(), body
+                    );
+                    let _ = tls_stream.write_all(response.as_bytes());
+                    tls_stream.conn.send_close_notify();
+                    let _ = tls_stream.flush();
+                }
+            }
+        });
+
+        (url, ca_file, handle)
+    }
+
+    fn run_native_roots_tls_child() {
+        install_test_crypto_provider();
+        let url = env::var("AFT_NATIVE_ROOTS_TLS_URL").expect("test TLS URL");
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("build test embedding client");
+        let result = send_embedding_request(
+            || client.post(&url).body("{}"),
+            "openai compatible",
+            EmbeddingRequestPolicy::Query(QueryBudget { timeout_ms: 5_000 }),
+        );
+
+        if env::var_os("SSL_CERT_FILE").is_some() {
+            let body = result.expect("SSL_CERT_FILE should make the private CA trusted");
+            assert!(
+                body.contains("\"data\""),
+                "unexpected embedding response: {body}"
+            );
+        } else {
+            let error =
+                result.expect_err("the private CA must not be trusted without SSL_CERT_FILE");
+            assert!(
+                error.contains("UnknownIssuer"),
+                "the rendered source chain must include the rustls trust failure: {error}"
+            );
+            assert!(
+                !embedding_failure_is_transient(&error),
+                "certificate trust failures must not be retried: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_roots_tls_client_subprocess() {
+        if env::var_os("AFT_NATIVE_ROOTS_TLS_CHILD").is_some() {
+            run_native_roots_tls_child();
+            return;
+        }
+
+        // rustls-native-certs reads SSL_CERT_FILE while building the client and
+        // may cache roots in a process. Run each trust configuration in a fresh
+        // test process, while holding the shared process-env lock so this test
+        // cannot race other tests that inspect or mutate environment variables.
+        let _env_lock = crate::test_env::process_env_lock();
+        let (url, ca_file, server_handle) = start_native_roots_tls_server();
+        let test_name = "semantic_index::tests::native_roots_tls_client_subprocess";
+
+        for ca_path in [None, Some(ca_file.path())] {
+            let mut command = Command::new(env::current_exe().expect("test executable"));
+            command
+                .args(["--exact", test_name, "--nocapture"])
+                .env("AFT_NATIVE_ROOTS_TLS_CHILD", "1")
+                .env("AFT_NATIVE_ROOTS_TLS_URL", &url)
+                .env_remove("SSL_CERT_FILE")
+                .env_remove("SSL_CERT_DIR");
+            if let Some(ca_path) = ca_path {
+                command.env("SSL_CERT_FILE", ca_path);
+            }
+            let output = command.output().expect("run TLS child test");
+            assert!(
+                output.status.success(),
+                "TLS child failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        server_handle.join().expect("join test TLS server");
     }
 
     #[test]
