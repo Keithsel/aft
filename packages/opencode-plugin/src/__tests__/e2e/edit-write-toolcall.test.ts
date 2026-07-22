@@ -21,10 +21,10 @@ type MutationToolResult = {
   output: string;
   title?: string;
   metadata?: {
+    diff?: string;
     filediff?: {
       file: string;
-      before: string;
-      after: string;
+      patch: string;
       additions: number;
       deletions: number;
     };
@@ -129,18 +129,20 @@ export function runEditWriteToolcallSuite(
       expect(result.output).toBe("Edited (+1/-1).");
       expect(result.metadata?.filediff?.file.endsWith("/replace.ts")).toBe(true);
       expect(result.metadata?.filediff).toMatchObject({
-        before: "export const value = 1;\n",
-        after: "export const value = 2;\n",
         additions: 1,
         deletions: 1,
       });
+      const patch = result.metadata?.filediff?.patch as string;
+      expect(patch).toContain("-export const value = 1;");
+      expect(patch).toContain("+export const value = 2;");
+      expect(result.metadata?.filediff).not.toHaveProperty("before");
+      expect(result.metadata?.filediff).not.toHaveProperty("after");
     });
 
-    test("edit on a >512KB file falls back to the preview hunk diff (no blank filediff)", async () => {
+    test("edit on a >512KB file returns the preview hunk as a patch filediff", async () => {
       const h = await harness();
-      // Over Rust's 512KB diff-content cap: the response diff is counts-only
-      // (`truncated: true`, no before/after). Fabricating empty contents used to
-      // render a blank diff in the UI.
+      // Over Rust's 512KB diff-content cap, the response diff is counts-only.
+      // The preview remains hunk-scoped so the UI can render the changed lines.
       const big = `${"a".repeat(600_000)}\nbeta\n`;
       await writeFile(h.path("big.txt"), big);
 
@@ -152,12 +154,14 @@ export function runEditWriteToolcallSuite(
 
       expect(await readTextFile(h.path("big.txt"))).toContain("BETA");
       expect(result.output).toBe("Edited (+1/-1).");
-      // No fabricated empty-content filediff...
-      expect(result.metadata?.filediff).toBeUndefined();
-      // ...and the rendered diff carries the real hunk from the preview.
-      const diffText = result.metadata?.diff as string | undefined;
-      expect(diffText).toContain("-beta");
-      expect(diffText).toContain("+BETA");
+      const filediff = result.metadata?.filediff;
+      expect(filediff?.file.endsWith("/big.txt")).toBe(true);
+      expect(filediff).toMatchObject({ additions: 1, deletions: 1 });
+      expect(filediff?.patch).toContain("-beta");
+      expect(filediff?.patch).toContain("+BETA");
+      expect(filediff).not.toHaveProperty("before");
+      expect(filediff).not.toHaveProperty("after");
+      expect(result.metadata?.diff).toBe(filediff?.patch);
     });
 
     test("edit symbol+content mutates the symbol and returns server text", async () => {
@@ -210,6 +214,34 @@ export function runEditWriteToolcallSuite(
       });
       expect(await readTextFile(h.path("overwrite.ts"))).toBe("export const value = 2;\n");
       expect(overwrite.output).toBe("File updated.");
+      expect(overwrite.metadata?.filediff?.file.endsWith("/overwrite.ts")).toBe(true);
+      expect(overwrite.metadata?.filediff).toMatchObject({ additions: 1, deletions: 1 });
+      expect(overwrite.metadata?.filediff?.patch).toContain("-export const value = 1;");
+      expect(overwrite.metadata?.filediff?.patch).toContain("+export const value = 2;");
+      expect(overwrite.metadata?.filediff).not.toHaveProperty("before");
+      expect(overwrite.metadata?.filediff).not.toHaveProperty("after");
+    });
+
+    test("write on a >512KB file returns the preview hunk as a patch filediff", async () => {
+      const h = await harness();
+      const big = `${"a".repeat(600_000)}\nbeta\n`;
+      await writeFile(h.path("big-write.txt"), big);
+
+      const result = await executeWrite(h, {
+        filePath: "big-write.txt",
+        content: `${"a".repeat(600_000)}\nBETA\n`,
+      });
+
+      expect(await readTextFile(h.path("big-write.txt"))).toContain("BETA");
+      expect(result.output).toBe("File updated.");
+      const filediff = result.metadata?.filediff;
+      expect(filediff?.file.endsWith("/big-write.txt")).toBe(true);
+      expect(filediff).toMatchObject({ additions: 1, deletions: 1 });
+      expect(filediff?.patch).toContain("-beta");
+      expect(filediff?.patch).toContain("+BETA");
+      expect(filediff).not.toHaveProperty("before");
+      expect(filediff).not.toHaveProperty("after");
+      expect(result.metadata?.diff).toBe(filediff?.patch);
     });
 
     test("denied preview approval returns permission_denied and leaves the file unchanged", async () => {

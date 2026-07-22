@@ -409,6 +409,136 @@ describe("Hoisted tool execute handlers", () => {
     expect(result).toContain("Line 3: Missing import");
   });
 
+  test("write and edit return patch-based filediff metadata for normal responses", async () => {
+    tmpDir = await makeTempDir();
+    sdkCtx = createMockSdkContext(tmpDir);
+    const before = "export const value = 1;\n";
+    const after = "export const value = 2;\n";
+
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview
+        ? previewResponse()
+        : {
+            success: true,
+            created: false,
+            replacements: 1,
+            diff: { before, after, additions: 1, deletions: 1 },
+            text: "Mutation complete.",
+          },
+    );
+
+    const writeResult = (await tools.write.execute(
+      { filePath: "write.ts", content: after },
+      sdkCtx,
+    )) as { metadata?: Record<string, unknown> };
+    const editResult = (await tools.edit.execute(
+      { filePath: "edit.ts", oldString: "value = 1", newString: "value = 2" },
+      sdkCtx,
+    )) as { metadata?: Record<string, unknown> };
+
+    for (const result of [writeResult, editResult]) {
+      const metadata = result.metadata as
+        | {
+            diff?: string;
+            filediff?: {
+              file?: string;
+              patch?: string;
+              additions?: number;
+              deletions?: number;
+            };
+          }
+        | undefined;
+      expect(metadata?.filediff).toMatchObject({ additions: 1, deletions: 1 });
+      expect(metadata?.filediff?.file).toBeTypeOf("string");
+      expect(metadata?.filediff?.patch).toContain("-export const value = 1;");
+      expect(metadata?.filediff?.patch).toContain("+export const value = 2;");
+      expect(metadata?.diff).toBe(metadata?.filediff?.patch);
+      expect(metadata?.filediff).not.toHaveProperty("before");
+      expect(metadata?.filediff).not.toHaveProperty("after");
+    }
+  });
+
+  test("write and edit return the preview patch for truncated responses", async () => {
+    tmpDir = await makeTempDir();
+    sdkCtx = createMockSdkContext(tmpDir);
+    const previewDiff = `Index: large.ts
+--- large.ts
++++ large.ts
+@@ -1,1 +1,1 @@
+-old line
++new line
+`;
+
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview
+        ? previewResponse(previewDiff)
+        : {
+            success: true,
+            created: false,
+            replacements: 1,
+            diff: { additions: 1, deletions: 1, truncated: true },
+            text: "Mutation complete.",
+          },
+    );
+
+    const writeResult = (await tools.write.execute(
+      { filePath: "large-write.ts", content: "new line\n" },
+      sdkCtx,
+    )) as { metadata?: Record<string, unknown> };
+    const editResult = (await tools.edit.execute(
+      { filePath: "large-edit.ts", oldString: "old line", newString: "new line" },
+      sdkCtx,
+    )) as { metadata?: Record<string, unknown> };
+
+    for (const result of [writeResult, editResult]) {
+      const metadata = result.metadata as
+        | {
+            diff?: string;
+            filediff?: {
+              file?: string;
+              patch?: string;
+              additions?: number;
+              deletions?: number;
+            };
+          }
+        | undefined;
+      expect(metadata?.filediff?.file).toBeTypeOf("string");
+      expect(metadata?.diff).toBe(previewDiff);
+      expect(metadata?.filediff).toMatchObject({
+        patch: previewDiff,
+        additions: 1,
+        deletions: 1,
+      });
+      expect(metadata?.filediff?.patch).toContain("-old line");
+      expect(metadata?.filediff?.patch).toContain("+new line");
+      expect(metadata?.filediff).not.toHaveProperty("before");
+      expect(metadata?.filediff).not.toHaveProperty("after");
+    }
+  });
+
+  test("omits filediff when a truncated response has no preview patch", async () => {
+    tmpDir = await makeTempDir();
+    sdkCtx = createMockSdkContext(tmpDir);
+
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview
+        ? { success: true, text: "Preview ready." }
+        : {
+            success: true,
+            diff: { additions: 1, deletions: 1, truncated: true },
+            text: "Mutation complete.",
+          },
+    );
+
+    const result = (await tools.write.execute(
+      { filePath: "large-write.ts", content: "new line\n" },
+      sdkCtx,
+    )) as { metadata?: { diff?: string; filediff?: unknown } };
+
+    expect(result.metadata?.diff).toBe("");
+    expect(result.metadata?.filediff).toBeUndefined();
+  });
+
   test("apply_patch calls server preview then apply without diagnostics payload", async () => {
     tmpDir = await makeTempDir();
     sdkCtx = createMockSdkContext(tmpDir);

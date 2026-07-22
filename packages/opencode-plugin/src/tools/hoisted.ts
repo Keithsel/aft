@@ -528,26 +528,26 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
       const dp = relativeToWorktree(filePath, projectRoot);
       const beforeContent = diff.before ?? "";
       const afterContent = diff.after ?? content;
+      const patch = truncated
+        ? typeof preview.preview_diff === "string"
+          ? preview.preview_diff
+          : ""
+        : buildUnifiedDiff(filePath, beforeContent, afterContent);
       return {
         output,
         title: dp,
         metadata: {
-          diff: truncated
-            ? typeof preview.preview_diff === "string"
-              ? preview.preview_diff
-              : ""
-            : buildUnifiedDiff(filePath, beforeContent, afterContent),
-          ...(truncated
-            ? {}
-            : {
+          diff: patch,
+          ...(patch
+            ? {
                 filediff: {
                   file: filePath,
-                  before: beforeContent,
-                  after: afterContent,
-                  additions: diff?.additions ?? 0,
-                  deletions: diff?.deletions ?? 0,
+                  patch,
+                  additions: diff.additions ?? 0,
+                  deletions: diff.deletions ?? 0,
                 },
-              }),
+              }
+            : {}),
           diagnostics: {},
         },
       };
@@ -764,27 +764,27 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
       // Files over Rust's 512KB diff cap return counts-only (`truncated: true`)
       // with no before/after. Fabricating empty contents here rendered a blank
       // diff in the UI — use the preview's hunk-scoped unified diff instead
-      // (it scales with the edit, not the file) and omit the filediff view.
+      // (it scales with the edit, not the file).
       const truncated = diff.truncated === true;
       const beforeContent = diff.before ?? "";
       const afterContent = diff.after ?? "";
+      const patch = truncated
+        ? typeof preview.preview_diff === "string"
+          ? preview.preview_diff
+          : ""
+        : buildUnifiedDiff(filePath, beforeContent, afterContent);
       const uiMeta = {
-        diff: truncated
-          ? typeof preview.preview_diff === "string"
-            ? preview.preview_diff
-            : ""
-          : buildUnifiedDiff(filePath, beforeContent, afterContent),
-        ...(truncated
-          ? {}
-          : {
+        diff: patch,
+        ...(patch
+          ? {
               filediff: {
                 file: filePath,
-                before: beforeContent,
-                after: afterContent,
+                patch,
                 additions: diff.additions ?? 0,
                 deletions: diff.deletions ?? 0,
               },
-            }),
+            }
+          : {}),
         diagnostics: {},
       };
       return { output, title: relativeToWorktree(filePath, projectRoot), metadata: uiMeta };
