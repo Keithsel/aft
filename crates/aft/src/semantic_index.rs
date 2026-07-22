@@ -763,9 +763,12 @@ impl SemanticEmbeddingModel {
         let api_key_env = normalize_api_key(config.api_key_env.clone());
         let model = config.model.clone();
 
+        let tls_config = crate::platform_tls::client_config()
+            .map_err(|error| format!("failed to configure embedding client TLS: {error}"))?;
         let client = Client::builder()
             .timeout(Duration::from_millis(timeout_ms))
             .redirect(reqwest::redirect::Policy::none())
+            .use_preconfigured_tls(tls_config)
             .build()
             .map_err(|error| format!("failed to configure embedding client: {error}"))?;
 
@@ -4703,7 +4706,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
 
-    fn start_native_roots_tls_server() -> (String, NamedTempFile, thread::JoinHandle<()>) {
+    fn start_platform_verifier_tls_server() -> (String, NamedTempFile, thread::JoinHandle<()>) {
         install_test_crypto_provider();
         let ca_key = rcgen::KeyPair::generate().expect("generate test CA key");
         let mut ca_params = rcgen::CertificateParams::default();
@@ -4747,10 +4750,12 @@ mod tests {
         let address = listener.local_addr().expect("read test TLS server address");
         let url = format!("https://localhost:{}/v1/embeddings", address.port());
         let handle = thread::spawn(move || {
-            // The two child processes below intentionally exercise both trust
-            // paths. The first handshake fails with UnknownIssuer; the second
-            // succeeds after SSL_CERT_FILE supplies the throwaway CA.
-            for _ in 0..2 {
+            // Linux exercises both trust paths: the first handshake fails with
+            // UnknownIssuer, and the second succeeds after SSL_CERT_FILE supplies
+            // the throwaway CA. Other platforms only exercise the failure path;
+            // their platform verifiers do not consult SSL_CERT_FILE.
+            let expected_connections = if cfg!(target_os = "linux") { 2 } else { 1 };
+            for _ in 0..expected_connections {
                 let (stream, _) = listener.accept().expect("accept test TLS connection");
                 stream
                     .set_read_timeout(Some(Duration::from_secs(10)))
@@ -4775,11 +4780,13 @@ mod tests {
         (url, ca_file, handle)
     }
 
-    fn run_native_roots_tls_child() {
+    fn run_platform_verifier_tls_child() {
         install_test_crypto_provider();
-        let url = env::var("AFT_NATIVE_ROOTS_TLS_URL").expect("test TLS URL");
+        let url = env::var("AFT_PLATFORM_VERIFIER_TLS_URL").expect("test TLS URL");
+        let tls_config = crate::platform_tls::client_config().expect("build platform TLS config");
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
+            .use_preconfigured_tls(tls_config)
             .build()
             .expect("build test embedding client");
         let result = send_embedding_request(
@@ -4788,47 +4795,58 @@ mod tests {
             EmbeddingRequestPolicy::Query(QueryBudget { timeout_ms: 5_000 }),
         );
 
+        #[cfg(target_os = "linux")]
         if env::var_os("SSL_CERT_FILE").is_some() {
             let body = result.expect("SSL_CERT_FILE should make the private CA trusted");
             assert!(
                 body.contains("\"data\""),
                 "unexpected embedding response: {body}"
             );
-        } else {
-            let error =
-                result.expect_err("the private CA must not be trusted without SSL_CERT_FILE");
-            assert!(
-                error.contains("UnknownIssuer"),
-                "the rendered source chain must include the rustls trust failure: {error}"
-            );
-            assert!(
-                !embedding_failure_is_transient(&error),
-                "certificate trust failures must not be retried: {error}"
-            );
-        }
-    }
-
-    #[test]
-    fn native_roots_tls_client_subprocess() {
-        if env::var_os("AFT_NATIVE_ROOTS_TLS_CHILD").is_some() {
-            run_native_roots_tls_child();
             return;
         }
 
-        // rustls-native-certs reads SSL_CERT_FILE while building the client and
-        // may cache roots in a process. Run each trust configuration in a fresh
-        // test process, while holding the shared process-env lock so this test
-        // cannot race other tests that inspect or mutate environment variables.
-        let _env_lock = crate::test_env::process_env_lock();
-        let (url, ca_file, server_handle) = start_native_roots_tls_server();
-        let test_name = "semantic_index::tests::native_roots_tls_client_subprocess";
+        let error = result.expect_err("the private CA must not be trusted on this path");
+        let lower = error.to_ascii_lowercase();
+        assert!(
+            ["certificate", "unknownissuer", "unknown issuer", "trust"]
+                .iter()
+                .any(|marker| lower.contains(marker)),
+            "the rendered source chain must include a certificate trust failure: {error}"
+        );
+        assert!(
+            !embedding_failure_is_transient(&error),
+            "certificate trust failures must not be retried: {error}"
+        );
+    }
 
-        for ca_path in [None, Some(ca_file.path())] {
+    #[test]
+    fn platform_verifier_tls_client_subprocess() {
+        if env::var_os("AFT_PLATFORM_VERIFIER_TLS_CHILD").is_some() {
+            run_platform_verifier_tls_child();
+            return;
+        }
+
+        // Run each trust configuration in a fresh process because the
+        // TLS/platform-verifier configuration caches CA settings; SSL_CERT_FILE
+        // must be set before that configuration is initialized for Linux CA
+        // discovery to use it. The process-env lock prevents this test from
+        // racing other tests that modify environment variables. macOS and Windows
+        // exercise only the untrusted path because their platform verifiers do
+        // not consult SSL_CERT_FILE.
+        let _env_lock = crate::test_env::process_env_lock();
+        let (url, _ca_file, server_handle) = start_platform_verifier_tls_server();
+        let test_name = "semantic_index::tests::platform_verifier_tls_client_subprocess";
+        #[cfg(target_os = "linux")]
+        let ca_paths: &[Option<&Path>] = &[None, Some(_ca_file.path())];
+        #[cfg(not(target_os = "linux"))]
+        let ca_paths: &[Option<&Path>] = &[None];
+
+        for ca_path in ca_paths {
             let mut command = Command::new(env::current_exe().expect("test executable"));
             command
                 .args(["--exact", test_name, "--nocapture"])
-                .env("AFT_NATIVE_ROOTS_TLS_CHILD", "1")
-                .env("AFT_NATIVE_ROOTS_TLS_URL", &url)
+                .env("AFT_PLATFORM_VERIFIER_TLS_CHILD", "1")
+                .env("AFT_PLATFORM_VERIFIER_TLS_URL", &url)
                 .env_remove("SSL_CERT_FILE")
                 .env_remove("SSL_CERT_DIR");
             if let Some(ca_path) = ca_path {

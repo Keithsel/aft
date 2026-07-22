@@ -475,7 +475,12 @@ fn build_client(options: &UrlFetchOptions) -> Result<Client, UrlFetchError> {
         builder = builder.resolve(host, *address);
     }
 
+    let tls_config = crate::platform_tls::client_config().map_err(|error| {
+        UrlFetchError::new(format!("Failed to configure URL fetch TLS: {error}"))
+    })?;
+
     builder
+        .use_preconfigured_tls(tls_config)
         .build()
         .map_err(|error| UrlFetchError::new(format!("Failed to build URL fetch client: {error}")))
 }

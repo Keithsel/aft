@@ -92,6 +92,7 @@ pub mod parser;
 pub mod patch;
 pub mod path_identity;
 pub mod pattern_compile;
+mod platform_tls;
 pub mod protocol;
 pub mod pty_render;
 pub mod query_shape;
