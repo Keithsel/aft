@@ -317,14 +317,14 @@ urlMaybeDescribe("aft_outline + aft_zoom — URL targets (real bridge + real fet
     ).rejects.toThrow(/HTTP 404/);
   });
 
-  test("zoom URL — rejects when both filePath and url provided", async () => {
+  test("zoom URL — rejects when both path and url provided", async () => {
     await expect(
       harness.callTool("aft_zoom", {
         filePath: "sample.ts",
         url: `${serverUrl}/doc.md`,
         symbols: "anything",
       }),
-    ).rejects.toThrow(/exactly ONE of 'filePath' or 'url'/);
+    ).rejects.toThrow(/exactly ONE of 'path' or 'url'/);
   });
 
   test("zoom URL — multi-section via symbols array", async () => {

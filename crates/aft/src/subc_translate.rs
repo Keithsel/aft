@@ -1631,7 +1631,7 @@ fn translate_safety(args: Value, project_root: &Path) -> Result<Translated, Tran
     };
 
     if op == "history" && map_in.get("path").and_then(Value::as_str).is_none() {
-        return Err(invalid_request("'filePath' is required for 'history' op"));
+        return Err(invalid_request("'path' is required for 'history' op"));
     }
     if matches!(op, "checkpoint" | "restore")
         && map_in.get("name").and_then(Value::as_str).is_none()

@@ -24,8 +24,8 @@ maybeDescribe("aft_safety (real bridge)", () => {
     if (harness) await harness.cleanup();
   });
 
-  test("history requires filePath", async () => {
-    await expect(harness.callTool("aft_safety", { op: "history" })).rejects.toThrow(/filePath/);
+  test("history requires path", async () => {
+    await expect(harness.callTool("aft_safety", { op: "history" })).rejects.toThrow(/path/);
   });
 
   test("checkpoint requires name", async () => {
@@ -56,7 +56,7 @@ maybeDescribe("aft_safety (real bridge)", () => {
     });
     const text = harness.text(result);
     expect(text).toContain("edited.ts");
-    expect(text).toContain("edit_match: line1");
+    expect(text).toContain("batch: pre-batch backup");
     expect(text).not.toContain('"entries"');
   });
 

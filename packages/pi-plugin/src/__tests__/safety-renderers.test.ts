@@ -12,9 +12,9 @@ describe("safety renderer", () => {
   test("renderSafetyCall shows op and target", () => {
     const output = renderToString(
       renderSafetyCall(
-        { op: "undo", filePath: "src/a.ts" },
+        { op: "undo", path: "src/a.ts" },
         mockTheme,
-        makeContext({ op: "undo", filePath: "src/a.ts" }),
+        makeContext({ op: "undo", path: "src/a.ts" }),
       ),
     );
     expect(output).toContain("safety");
@@ -26,9 +26,9 @@ describe("safety renderer", () => {
     const undo = renderToString(
       renderSafetyResult(
         makeResult("", { path: "src/a.ts", backup_id: "b1" }),
-        { op: "undo", filePath: "src/a.ts" },
+        { op: "undo", path: "src/a.ts" },
         mockTheme,
-        makeContext({ op: "undo", filePath: "src/a.ts" }),
+        makeContext({ op: "undo", path: "src/a.ts" }),
       ),
     );
     const history = renderToString(
@@ -37,9 +37,9 @@ describe("safety renderer", () => {
           file: "src/a.ts",
           entries: [{ backup_id: "b1", timestamp: 1_700_000_000, description: "pre-edit" }],
         }),
-        { op: "history", filePath: "src/a.ts" },
+        { op: "history", path: "src/a.ts" },
         mockTheme,
-        makeContext({ op: "history", filePath: "src/a.ts" }),
+        makeContext({ op: "history", path: "src/a.ts" }),
       ),
     );
     const checkpoint = renderToString(
@@ -75,9 +75,9 @@ describe("safety renderer", () => {
     const error = renderToString(
       renderSafetyResult(
         makeResult("no undo history"),
-        { op: "undo", filePath: "src/a.ts" },
+        { op: "undo", path: "src/a.ts" },
         mockTheme,
-        makeContext({ op: "undo", filePath: "src/a.ts" }, { isError: true }),
+        makeContext({ op: "undo", path: "src/a.ts" }, { isError: true }),
       ),
     );
     const empty = renderToString(

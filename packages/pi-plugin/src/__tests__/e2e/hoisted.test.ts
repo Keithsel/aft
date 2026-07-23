@@ -101,18 +101,18 @@ maybeDescribe("hoisted tools (real bridge)", () => {
       | {
           diff?: string;
           firstChangedLine?: number;
-          replacements?: number;
+          editsApplied?: number;
         }
       | undefined;
     expect(details?.diff).toBeDefined();
     expect(typeof details?.firstChangedLine).toBe("number");
-    expect(details?.replacements).toBe(1);
+    expect(details?.editsApplied).toBe(1);
 
     const actual = await readFile(harness.path("edit-target.ts"), "utf8");
     expect(actual).toBe("export const suffix = '?';\n");
   });
 
-  test("edit with replaceAll rewrites every occurrence and reports count", async () => {
+  test("edit with replaceAll rewrites every occurrence and reports applied edit count", async () => {
     await harness.callTool("write", {
       filePath: "edit-all.ts",
       content: "a\na\na\n",
@@ -124,7 +124,8 @@ maybeDescribe("hoisted tools (real bridge)", () => {
       replaceAll: true,
     });
     const text = harness.text(result);
-    expect(text).toMatch(/3 replacements/);
+    expect(text).toBe("Edited (+3/-3).");
+    expect((result as { details?: { editsApplied?: number } }).details?.editsApplied).toBe(1);
 
     const actual = await readFile(harness.path("edit-all.ts"), "utf8");
     expect(actual).toBe("b\nb\nb\n");
