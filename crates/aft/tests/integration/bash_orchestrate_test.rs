@@ -351,12 +351,24 @@ fn pending_orchestrated_bash_does_not_starve_push_frames() {
         "configure failed: {configure:?}"
     );
 
-    // The invariant is frame ordering, not one-second delivery. Read the next frame with
-    // a generous hang backstop and assert that the configure push wins the deferred bash
-    // response, so scheduler contention cannot turn correct ordering into a timeout.
-    let push = aft
-        .try_read_next_timeout(Duration::from_secs(12))
-        .expect("configure warning push before deferred bash response");
+    // The invariant: the pending deferred bash response must not starve push
+    // frames — configure_warnings has to arrive BEFORE that deferred response.
+    // Under host load the 2s sleep can finish while configure is still running,
+    // so the task's own completion push may legitimately land first; pushes
+    // overtaking pushes is not starvation. Tolerate the task's push frames and
+    // fail only if the deferred RESPONSE (an "id" frame) beats the warnings.
+    let push = loop {
+        let frame = aft
+            .try_read_next_timeout(Duration::from_secs(12))
+            .expect("configure warning push before deferred bash response");
+        if frame.get("type").is_some() {
+            if frame["type"] == "configure_warnings" {
+                break frame;
+            }
+            continue;
+        }
+        panic!("deferred response overtook the configure push (starvation): {frame:?}");
+    };
     assert_eq!(
         push["type"], "configure_warnings",
         "unexpected frame: {push:?}"
