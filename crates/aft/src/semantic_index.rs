@@ -4786,18 +4786,23 @@ mod tests {
         let tls_config = crate::platform_tls::client_config().expect("build platform TLS config");
         // Generous budgets: on macOS the FIRST evaluation of an untrusted chain
         // can take >10s when the keychain holds a pathological trust-settings
-        // entry (trustd walks user trust settings and storms signature checks).
-        // The verifier still rejects correctly; a short timeout would surface a
-        // transient "operation timed out" before the certificate error exists.
+        // entry (trustd walks user trust settings and storms signature checks),
+        // and >45s when the parallel lib-test fan-out loads the machine on top
+        // of that. The verifier still rejects correctly; a short timeout would
+        // surface a transient "operation timed out" before the certificate
+        // error exists. Clean keychains answer in milliseconds, so this budget
+        // only ever costs time on machines with hostile trust settings.
         let client = Client::builder()
-            .timeout(Duration::from_secs(45))
+            .timeout(Duration::from_secs(120))
             .use_preconfigured_tls(tls_config)
             .build()
             .expect("build test embedding client");
         let result = send_embedding_request(
             || client.post(&url).body("{}"),
             "openai compatible",
-            EmbeddingRequestPolicy::Query(QueryBudget { timeout_ms: 45_000 }),
+            EmbeddingRequestPolicy::Query(QueryBudget {
+                timeout_ms: 120_000,
+            }),
         );
 
         #[cfg(target_os = "linux")]
