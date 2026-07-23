@@ -106,7 +106,6 @@ describe("canonical path alias preparation", () => {
   });
 });
 
-
 describe("edit boundary preparation", () => {
   test("applies mode conflict precedence before parsing stringified edits", () => {
     expect(() =>
@@ -146,10 +145,11 @@ describe("edit boundary preparation", () => {
 
   test("uses the retired-form error only at the OpenCode-prefixed raw boundary", () => {
     expect(() =>
-      prepareCanonicalEditArguments(
-        "aft_edit",
-        { mode: "write", file: "src/main.ts", content: "x" },
-      ),
+      prepareCanonicalEditArguments("aft_edit", {
+        mode: "write",
+        file: "src/main.ts",
+        content: "x",
+      }),
     ).toThrow("retired");
 
     expect(() =>
@@ -158,17 +158,7 @@ describe("edit boundary preparation", () => {
   });
 
   test("normalizes item aliases and the complete scalar compatibility domains", () => {
-    const replaceAllValues: unknown[] = [
-      true,
-      false,
-      "true",
-      "TRUE",
-      "fAlSe",
-      1,
-      0,
-      "1",
-      "0",
-    ];
+    const replaceAllValues: unknown[] = [true, false, "true", "TRUE", "fAlSe", 1, 0, "1", "0"];
     for (const value of replaceAllValues) {
       const result = prepareCanonicalEditArguments("edit", {
         path: "src/main.ts",

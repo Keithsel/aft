@@ -225,7 +225,6 @@ export function prepareCanonicalPathArguments(
   return record;
 }
 
-
 const EDIT_ROOT_COMPATIBILITY_KEYS = new Set([
   "oldString",
   "newString",
@@ -233,13 +232,7 @@ const EDIT_ROOT_COMPATIBILITY_KEYS = new Set([
   "occurrence",
 ]);
 
-const EDIT_ROOT_CANONICAL_KEYS = new Set([
-  "path",
-  "appendContent",
-  "edits",
-  "symbol",
-  "content",
-]);
+const EDIT_ROOT_CANONICAL_KEYS = new Set(["path", "appendContent", "edits", "symbol", "content"]);
 
 const EDIT_ITEM_KEYS = new Set([
   "oldString",
@@ -472,9 +465,7 @@ function normalizeEditItem(value: unknown, index: number): Record<string, unknow
     return item;
   }
 
-  throw new InvalidRequestError(
-    `edit: edits[${index}] must be a find/replace or line-range item`,
-  );
+  throw new InvalidRequestError(`edit: edits[${index}] must be a find/replace or line-range item`);
 }
 
 function normalizeItemAlias(
@@ -489,7 +480,9 @@ function normalizeItemAlias(
 }
 
 function validateEditItemKeys(item: Record<string, unknown>, index: number): void {
-  const unknown = Object.getOwnPropertyNames(item).filter((key) => !EDIT_ITEM_KEYS.has(key)).sort();
+  const unknown = Object.getOwnPropertyNames(item)
+    .filter((key) => !EDIT_ITEM_KEYS.has(key))
+    .sort();
   if (unknown.length > 0) {
     throw new InvalidRequestError(`edit: edits[${index}] contains ${formatUnknownKeys(unknown)}`);
   }
@@ -548,7 +541,6 @@ function coerceEditOccurrence(value: unknown, index: number): number | undefined
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 }
-
 
 function copyOwnProperties(source: Record<string, unknown>): Record<string, unknown> {
   const copy = Object.create(null) as Record<string, unknown>;
