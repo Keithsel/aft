@@ -20,9 +20,9 @@ describe("reading renderers", () => {
     );
     const zoom = renderToString(
       renderZoomCall(
-        { filePath: "src/a.ts", symbols: "run" },
+        { path: "src/a.ts", symbols: "run" },
         mockTheme,
-        makeContext({ filePath: "src/a.ts", symbols: "run" }),
+        makeContext({ path: "src/a.ts", symbols: "run" }),
       ),
     );
 
@@ -37,7 +37,7 @@ describe("reading renderers", () => {
       renderOutlineResult(
         makeResult("sample.ts\n  E fn run() 1:5\n  - cls Service 7:12"),
         mockTheme,
-        makeContext({ filePath: "sample.ts" }),
+        makeContext({ path: "sample.ts" }),
       ),
     );
     const zoom = renderToString(
@@ -52,9 +52,9 @@ describe("reading renderers", () => {
             called_by: [{ name: "main", line: 8 }],
           },
         }),
-        { filePath: "sample.ts", symbol: "run" },
+        { path: "sample.ts", symbol: "run" },
         mockTheme,
-        makeContext({ filePath: "sample.ts", symbol: "run" }),
+        makeContext({ path: "sample.ts", symbol: "run" }),
       ),
     );
 
@@ -69,9 +69,9 @@ describe("reading renderers", () => {
     const error = renderToString(
       renderZoomResult(
         makeResult("symbol not found"),
-        { filePath: "sample.ts", symbol: "run" },
+        { path: "sample.ts", symbol: "run" },
         mockTheme,
-        makeContext({ filePath: "sample.ts", symbol: "run" }, { isError: true }),
+        makeContext({ path: "sample.ts", symbol: "run" }, { isError: true }),
       ),
     );
     const empty = renderToString(
@@ -117,15 +117,15 @@ describe("reading renderers", () => {
         makeResult(batch.text, batch),
         {
           targets: [
-            { filePath: "src/a.ts", symbol: "foo" },
-            { filePath: "src/b.ts", symbol: "bar" },
+            { path: "src/a.ts", symbol: "foo" },
+            { path: "src/b.ts", symbol: "bar" },
           ],
         },
         mockTheme,
         makeContext({
           targets: [
-            { filePath: "src/a.ts", symbol: "foo" },
-            { filePath: "src/b.ts", symbol: "bar" },
+            { path: "src/a.ts", symbol: "foo" },
+            { path: "src/b.ts", symbol: "bar" },
           ],
         }),
       ),
@@ -170,9 +170,9 @@ describe("reading renderers", () => {
     const rendered = renderToString(
       renderZoomResult(
         makeResult(batch.text, batch),
-        { filePath: "sample.ts", symbols: ["run", "Missing"] },
+        { path: "sample.ts", symbols: ["run", "Missing"] },
         mockTheme,
-        makeContext({ filePath: "sample.ts", symbols: ["run", "Missing"] }),
+        makeContext({ path: "sample.ts", symbols: ["run", "Missing"] }),
       ),
     );
 

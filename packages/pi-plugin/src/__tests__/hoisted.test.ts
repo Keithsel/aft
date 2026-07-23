@@ -177,7 +177,7 @@ describe("hoisted tool adapters", () => {
     expect(toolArgs(calls[0])).toEqual({ filePath: artifactPath });
   });
 
-  test("read accepts canonical and legacy spellings but rejects unequal dual spelling", async () => {
+  test("read accepts filePath as a compatibility alias and rejects unequal dual spelling", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge(() => ({ success: true, text: "ok" }));
     registerHoistedTools(api, makePluginContext(bridge), {
@@ -189,18 +189,19 @@ describe("hoisted tool adapters", () => {
     });
     const readTool = tools.get("read")!;
 
-    expect(schemaAccepts(readTool.parameters, { filePath: "alias.ts" })).toBe(true);
+    // The raw Pi schema publishes only the canonical path spelling. The
+    // prepareArguments hook still accepts filePath before execution.
+    expect(schemaAccepts(readTool.parameters, { filePath: "alias.ts" })).toBe(false);
     await executeTool(readTool, { filePath: "alias.ts" });
     expect(toolArgs(calls[0])).toEqual({ filePath: "alias.ts" });
 
-    expect(schemaAccepts(readTool.parameters, { path: "canonical.ts", filePath: "alias.ts" })).toBe(
-      true,
-    );
+    expect(schemaAccepts(readTool.parameters, { path: "canonical.ts" })).toBe(true);
+    expect(schemaHasProperty(readTool.parameters, "filePath")).toBe(false);
     await expect(
       executeTool(readTool, { path: "canonical.ts", filePath: "alias.ts" }),
     ).rejects.toThrow(/equal decoded strings/);
 
-    expect(schemaAccepts(readTool.parameters, {})).toBe(true);
+    expect(schemaAccepts(readTool.parameters, {})).toBe(false);
     await expect(executeTool(readTool, {})).rejects.toThrow("'path' is required");
   });
 
@@ -484,7 +485,7 @@ describe("hoisted tool adapters", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("edit accepts path as a compatibility alias without overriding filePath", async () => {
+  test("edit accepts filePath as a compatibility alias without overriding path", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge(() => ({ success: true, diff: { additions: 1 } }));
     registerHoistedTools(api, makePluginContext(bridge), {
@@ -496,15 +497,23 @@ describe("hoisted tool adapters", () => {
     });
     const editTool = tools.get("edit")!;
 
+    // The raw schema is edits[]-only; top-level oldString/newString remain a
+    // compatibility input that is folded before the tool call is dispatched.
     expect(
       schemaAccepts(editTool.parameters, {
-        path: "alias.ts",
+        path: "canonical.ts",
+        edits: [{ oldString: "before", newString: "after" }],
+      }),
+    ).toBe(true);
+    expect(
+      schemaAccepts(editTool.parameters, {
+        filePath: "alias.ts",
         oldString: "before",
         newString: "after",
       }),
-    ).toBe(true);
+    ).toBe(false);
     await executeTool(editTool, {
-      path: "alias.ts",
+      filePath: "alias.ts",
       oldString: "before",
       newString: "after",
     });
@@ -513,25 +522,18 @@ describe("hoisted tool adapters", () => {
       edits: [{ oldString: "before", newString: "after" }],
     });
 
-    expect(
-      schemaAccepts(editTool.parameters, {
-        filePath: "canonical.ts",
-        path: "alias.ts",
-        oldString: "before",
-        newString: "after",
-      }),
-    ).toBe(true);
+    expect(schemaHasProperty(editTool.parameters, "filePath")).toBe(false);
     await expect(
       executeTool(editTool, {
-        filePath: "canonical.ts",
-        path: "alias.ts",
+        path: "canonical.ts",
+        filePath: "alias.ts",
         oldString: "before",
         newString: "after",
       }),
     ).rejects.toThrow(/equal decoded strings/);
 
     expect(schemaAccepts(editTool.parameters, { oldString: "before", newString: "after" })).toBe(
-      true,
+      false,
     );
     await expect(
       executeTool(editTool, { oldString: "before", newString: "after" }),
@@ -809,7 +811,7 @@ describe("hoisted tool adapters", () => {
     expect(result.details.diagnostics).toBeUndefined();
   });
 
-  test("write accepts path as a compatibility alias and rejects unequal dual spelling", async () => {
+  test("write accepts filePath as a compatibility alias and rejects unequal dual spelling", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge(() => ({ success: true, diff: { additions: 1 } }));
     registerHoistedTools(api, makePluginContext(bridge), {
@@ -821,22 +823,17 @@ describe("hoisted tool adapters", () => {
     });
     const writeTool = tools.get("write")!;
 
-    expect(schemaAccepts(writeTool.parameters, { path: "alias.ts", content: "x" })).toBe(true);
-    await executeTool(writeTool, { path: "alias.ts", content: "x" });
+    expect(schemaAccepts(writeTool.parameters, { path: "canonical.ts", content: "x" })).toBe(true);
+    expect(schemaAccepts(writeTool.parameters, { filePath: "alias.ts", content: "x" })).toBe(false);
+    await executeTool(writeTool, { filePath: "alias.ts", content: "x" });
     expect(toolArgs(calls[0])).toEqual({ filePath: "alias.ts", content: "x" });
 
-    expect(
-      schemaAccepts(writeTool.parameters, {
-        filePath: "canonical.ts",
-        path: "alias.ts",
-        content: "x",
-      }),
-    ).toBe(true);
+    expect(schemaHasProperty(writeTool.parameters, "filePath")).toBe(false);
     await expect(
-      executeTool(writeTool, { filePath: "canonical.ts", path: "alias.ts", content: "x" }),
+      executeTool(writeTool, { path: "canonical.ts", filePath: "alias.ts", content: "x" }),
     ).rejects.toThrow(/equal decoded strings/);
 
-    expect(schemaAccepts(writeTool.parameters, { content: "x" })).toBe(true);
+    expect(schemaAccepts(writeTool.parameters, { content: "x" })).toBe(false);
     await expect(executeTool(writeTool, { content: "x" })).rejects.toThrow("'path' is required");
   });
 

@@ -1,6 +1,6 @@
 {
   "error": {
     "code": "invalid_request",
-    "message": "'filePath' is required for 'history' op"
+    "message": "'path' is required for 'history' op"
   }
 }
