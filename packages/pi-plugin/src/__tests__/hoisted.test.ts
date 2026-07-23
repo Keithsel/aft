@@ -334,6 +334,48 @@ describe("hoisted tool adapters", () => {
     });
   });
 
+  test("edit preserves logical code, exact message, and structured cause for failed replacements", async () => {
+    const { api, tools } = makeMockApi();
+    const message =
+      "batch: edits[0] match 'same' is ambiguous (2 occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.";
+    const response = {
+      success: false,
+      code: "ambiguous_match",
+      message,
+      occurrences: [
+        { index: 1, line: 1, context: "same same" },
+        { index: 2, line: 1, context: "same same" },
+      ],
+      text: `wrapped: ${message}`,
+    };
+    const { bridge } = makeMockBridge(() => response);
+    registerHoistedTools(api, makePluginContext(bridge), {
+      hoistRead: false,
+      hoistWrite: false,
+      hoistEdit: true,
+      hoistGrep: false,
+      restrictToProjectRoot: true,
+    });
+
+    try {
+      await executeTool(tools.get("edit")!, {
+        path: "same.txt",
+        edits: [{ oldString: "same", newString: "new" }],
+      });
+      throw new Error("expected edit failure");
+    } catch (error) {
+      expect((error as { code?: string }).code).toBe("ambiguous_match");
+      expect((error as Error).message).toBe(message);
+      expect(
+        (error as { cause?: { code?: string; message?: string; response?: unknown } }).cause,
+      ).toMatchObject({
+        code: "ambiguous_match",
+        message,
+        response,
+      });
+    }
+  });
+
   test("edit batch mode coerces stringified item replaceAll through tool_call", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge(() => ({

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { toolErrorFromResponse } from "@cortexkit/aft-bridge";
 import { formatBridgeErrorMessage } from "../tools/_shared.js";
 
 describe("formatBridgeErrorMessage", () => {
@@ -29,5 +30,24 @@ describe("formatBridgeErrorMessage", () => {
     expect(message).toContain("data:");
     expect(message).toContain("conflicting_line");
     expect(message).not.toContain("status_bar");
+  });
+
+  test("contract errors keep code before the exact normalized message", () => {
+    const response = {
+      id: "8",
+      success: false,
+      code: "invalid_request",
+      message:
+        "edit: top-level 'startLine' are invalid; line-range fields are valid only inside 'edits[]'. Use edits: [{ startLine, endLine, content }].",
+      occurrences: [{ index: 1, line: 2, context: "hello" }],
+    };
+    const error = toolErrorFromResponse("edit", response);
+
+    expect(error.code).toBe("invalid_request");
+    expect(error.message).toBe(response.message);
+    expect(error.response).toEqual(response);
+    expect(error.cause.code).toBe("invalid_request");
+    expect(error.cause.message).toBe(response.message);
+    expect(error.cause.response.occurrences).toEqual(response.occurrences);
   });
 });

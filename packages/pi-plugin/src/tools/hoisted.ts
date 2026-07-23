@@ -25,6 +25,7 @@ import {
   decodeFileUrl,
   formatEditSummary,
   formatReadFooter as formatSharedReadFooter,
+  toolErrorFromResponse,
 } from "@cortexkit/aft-bridge";
 import {
   type AgentToolResult,
@@ -594,7 +595,7 @@ export function registerHoistedTools(
           };
           const response = await callToolCall(bridge, "write", rawArgs, extCtx);
           if (response.success === false) {
-            throw new Error(response.text || response.message || "write failed");
+            throw toolErrorFromResponse("write", response);
           }
           return buildMutationResult(response);
         },
@@ -661,7 +662,7 @@ export function registerHoistedTools(
 
           const response = await callToolCall(bridge, "edit", rawArgs, extCtx);
           if (response.success === false) {
-            throw new Error(response.text || response.message || "edit failed");
+            throw toolErrorFromResponse("edit", response);
           }
           return buildMutationResult(response);
         },

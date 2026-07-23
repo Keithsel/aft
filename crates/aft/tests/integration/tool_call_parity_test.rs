@@ -70,6 +70,19 @@ fn tool_call_matches_direct_spine_envelopes() {
             "error code mismatch for {}",
             case.label
         );
+        if case.label == "edit_ambiguous_match" {
+            assert_eq!(direct_response["code"], "ambiguous_match");
+            let message = direct_response["message"].as_str().unwrap_or_default();
+            assert!(message.contains("occurrence"));
+            assert!(message.contains("1-based"));
+            assert!(!message.contains("0-based"));
+            assert!(!message.contains("0-indexed"));
+            let occurrences = direct_response["occurrences"]
+                .as_array()
+                .expect("ambiguous edit occurrences");
+            assert_eq!(occurrences[0]["index"], 1);
+            assert_eq!(occurrences[1]["index"], 2);
+        }
 
         let expected_text = formatted_text_from_direct_response(
             case.tool,
@@ -166,6 +179,56 @@ fn known_tool_translate_errors_surface_as_invalid_request() {
                 .unwrap_or_default()
                 .contains(expected_message),
             "message should include {expected_message:?}: {response:#}"
+        );
+    }
+    assert!(aft.shutdown().success());
+}
+
+#[test]
+fn edit_contract_translation_preserves_exact_code_then_message() {
+    let mut aft = AftProcess::spawn();
+    let cases = [
+        (
+            "no-mode",
+            json!({"path": "src/main.ts"}),
+            "edit: exactly one of `appendContent`, `edits`, or `symbol` plus `content` is required",
+        ),
+        (
+            "top-level-start-line",
+            json!({"path": "src/main.ts", "startLine": 1}),
+            "edit: top-level 'startLine' are invalid; line-range fields are valid only inside 'edits[]'. Use edits: [{ startLine, endLine, content }].",
+        ),
+        (
+            "occurrence-zero",
+            json!({"path": "src/main.ts", "edits": [{"oldString": "value", "occurrence": 0}]}),
+            "edit: edits[0].occurrence must be a positive integer",
+        ),
+        (
+            "replace-all-occurrence-conflict",
+            json!({"path": "src/main.ts", "edits": [{"oldString": "value", "replaceAll": true, "occurrence": 1}]}),
+            "edit: edits[0] cannot contain both 'replaceAll' and 'occurrence'",
+        ),
+    ];
+
+    for (label, arguments, expected_message) in cases {
+        let response = send_json(
+            &mut aft,
+            json!({
+                "id": format!("tool-call-edit-contract-{label}"),
+                "command": "tool_call",
+                "session_id": SESSION_ID,
+                "name": "edit",
+                "arguments": arguments,
+            }),
+        );
+        assert_eq!(response["success"], false, "expected failure: {response:#}");
+        assert_eq!(
+            response["code"], "invalid_request",
+            "wrong code: {response:#}"
+        );
+        assert_eq!(
+            response["message"], expected_message,
+            "normalized contract message drifted for {label}: {response:#}"
         );
     }
     assert!(aft.shutdown().success());
@@ -271,6 +334,14 @@ fn parity_cases() -> Vec<ParityCase> {
             arguments: json!({"filePath": "src/edit.txt", "oldString": "old", "newString": "new"}),
         },
         ParityCase {
+            label: "edit_ambiguous_match",
+            tool: "edit",
+            arguments: json!({
+                "filePath": "src/edit_ambiguous.txt",
+                "edits": [{"oldString": "same", "newString": "new"}]
+            }),
+        },
+        ParityCase {
             label: "apply_patch_update",
             tool: "apply_patch",
             arguments: json!({"patchText": "*** Begin Patch\n*** Update File: src/patch.txt\n@@\n-before\n+after\n*** End Patch"}),
@@ -334,6 +405,8 @@ fn create_fixture_project(root: &Path) {
             .expect("pin grep fixture mtime");
     }
     fs::write(root.join("src/edit.txt"), "replace old value\n").expect("write edit fixture");
+    fs::write(root.join("src/edit_ambiguous.txt"), "same same\n")
+        .expect("write ambiguous edit fixture");
     fs::write(root.join("src/patch.txt"), "before\n").expect("write patch fixture");
     fs::write(
         root.join("src/todos.rs"),

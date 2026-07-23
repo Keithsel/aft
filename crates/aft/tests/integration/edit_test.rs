@@ -748,6 +748,11 @@ fn edit_match_multiple_occurrences_returns_candidates() {
         resp
     );
     assert_eq!(resp["code"], "ambiguous_match");
+    let message = resp["message"].as_str().unwrap_or_default();
+    assert!(message.contains("occurrence"));
+    assert!(message.contains("1-based"));
+    assert!(!message.contains("0-based"));
+    assert!(!message.contains("0-indexed"));
     let occurrences = resp["occurrences"]
         .as_array()
         .expect("should have occurrences array");
@@ -1541,9 +1546,21 @@ fn batch_ambiguity_error_mentions_occurrence_and_replace_all() {
     let resp = aft.send(&serde_json::to_string(&req).unwrap());
 
     assert_eq!(resp["success"], false, "batch should fail: {resp:?}");
+    assert_eq!(resp["code"], "ambiguous_match");
     let message = resp["message"].as_str().unwrap();
-    assert!(message.contains("'occurrence' (1-based)"));
+    assert!(message.contains("occurrence"));
+    assert!(message.contains("1-based"));
+    assert!(!message.contains("0-based"));
+    assert!(!message.contains("0-indexed"));
     assert!(message.contains("'replaceAll': true"));
+    assert!(message.contains("edits[0]"));
+    let occurrences = resp["occurrences"].as_array().expect("occurrences array");
+    assert_eq!(occurrences.len(), 2);
+    assert_eq!(occurrences[0]["index"], 1);
+    assert_eq!(occurrences[1]["index"], 2);
+    assert_eq!(occurrences[0]["line"], 1);
+    assert_eq!(occurrences[1]["line"], 1);
+    assert_eq!(occurrences[0]["context"], "same same");
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
 
     let status = aft.shutdown();

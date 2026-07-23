@@ -10,7 +10,7 @@
  */
 
 import * as path from "node:path";
-import { coerceBoolean, coerceStringArray } from "@cortexkit/aft-bridge";
+import { coerceBoolean, coerceStringArray, toolErrorFromResponse } from "@cortexkit/aft-bridge";
 import type { ToolDefinition, ToolResult } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { resolveBashConfig } from "../config.js";
@@ -462,7 +462,7 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
 
       const preview = await callToolCall(ctx, context, "write", rawArgs, { preview: true });
       if (preview.success === false) {
-        throw new Error((preview.message as string) || "write preview failed");
+        throw toolErrorFromResponse("write", preview);
       }
 
       const denial = await askEditPermission(context, [relPath], {
@@ -475,7 +475,7 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
 
       // Error response (e.g. path validation failure)
       if (data.success === false) {
-        throw new Error((data.message as string) || "write failed");
+        throw toolErrorFromResponse("write", data);
       }
 
       const output = data.text;
@@ -682,7 +682,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
 
       const preview = await callToolCall(ctx, context, "edit", rawArgs, { preview: true });
       if (preview.success === false) {
-        throw new Error((preview.message as string) || "edit preview failed");
+        throw toolErrorFromResponse("edit", preview);
       }
 
       const denial = await askEditPermission(context, [relPath], {
@@ -697,7 +697,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
       // edits (match-not-found, ambiguous, syntax rollback, or glob with zero
       // matches) must still be surfaced as thrown tool errors.
       if (data.success === false) {
-        throw new Error((data.message as string) || "edit failed");
+        throw toolErrorFromResponse("edit", data);
       }
 
       const output = data.text;

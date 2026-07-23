@@ -805,11 +805,16 @@ mod tests {
         let err = Response::error_with_data(
             "req-8",
             "ambiguous_match",
-            "too many matches",
-            json!({ "candidates": ["a", "b"] }),
+            "batch: edits[0] match 'same' is ambiguous (2 occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.",
+            json!({
+                "occurrences": [
+                    { "index": 1, "line": 1, "context": "same same" },
+                    { "index": 2, "line": 1, "context": "same same" }
+                ]
+            }),
         );
         let err_result = ToolCallResult {
-            text: "error text".to_string(),
+            text: "batch: edits[0] match 'same' is ambiguous (2 occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.".to_string(),
             response: err,
         };
         let err_frame = build_tool_response_frame(
@@ -829,10 +834,20 @@ mod tests {
             json!("ambiguous_match")
         );
         assert_eq!(
-            err_body["structuredContent"]["candidates"],
-            json!(["a", "b"])
+            err_body["structuredContent"]["occurrences"],
+            json!([
+                { "index": 1, "line": 1, "context": "same same" },
+                { "index": 2, "line": 1, "context": "same same" }
+            ])
         );
-        assert_eq!(err_body["structuredContent"]["text"], json!("error text"));
+        let err_message = err_body["structuredContent"]["message"]
+            .as_str()
+            .expect("structured contract message");
+        assert!(err_message.contains("occurrence"));
+        assert!(err_message.contains("1-based"));
+        assert!(!err_message.contains("0-based"));
+        assert!(!err_message.contains("0-indexed"));
+        assert_eq!(err_body["structuredContent"]["text"], json!(err_message));
 
         // UNTRUSTED (MCP) binds get text-only replies: no structuredContent
         // key at all. Generic MCP hosts have no re-lift layer, and hosts like
@@ -843,13 +858,19 @@ mod tests {
             route_key(1, 1),
             44,
             control_flags(),
-            &result,
+            &err_result,
             BindTrust::Untrusted,
         )
         .unwrap();
         let untrusted_body: Value = serde_json::from_slice(&untrusted_frame.body).unwrap();
-        assert_eq!(untrusted_body["content"][0]["text"], json!("rendered text"));
-        assert_eq!(untrusted_body["isError"], json!(false));
+        let untrusted_message = untrusted_body["content"][0]["text"]
+            .as_str()
+            .expect("untrusted contract message");
+        assert!(untrusted_message.contains("occurrence"));
+        assert!(untrusted_message.contains("1-based"));
+        assert!(!untrusted_message.contains("0-based"));
+        assert!(!untrusted_message.contains("0-indexed"));
+        assert_eq!(untrusted_body["isError"], json!(true));
         assert!(
             untrusted_body.get("structuredContent").is_none(),
             "untrusted binds must not receive structuredContent: {untrusted_body}"

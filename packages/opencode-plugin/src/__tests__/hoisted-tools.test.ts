@@ -816,22 +816,44 @@ describe("Hoisted tool execute handlers", () => {
     expect(calls[0]?.options?.preview).toBe(true);
   });
 
-  test("edit throws the Rust error response for failed replacements", async () => {
+  test("edit preserves logical code, exact message, and structured cause for failed replacements", async () => {
     tmpDir = await makeTempDir();
     sdkCtx = createMockSdkContext(tmpDir);
-
+    const message =
+      "batch: edits[0] match 'same' is ambiguous (2 occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.";
+    const response = {
+      success: false,
+      code: "ambiguous_match",
+      message,
+      occurrences: [
+        { index: 1, line: 1, context: "same same" },
+        { index: 2, line: 1, context: "same same" },
+      ],
+      text: `wrapped: ${message}`,
+    };
     const { tools } = createMockHoistedHarness(async (command, _params, options) => {
       expect(command).toBe("edit");
-      if (options?.preview) return { success: false, message: "Match not found in file", text: "" };
+      if (options?.preview) return response;
       throw new Error("real edit should not run after preview failure");
     });
 
-    await expect(
-      tools.edit.execute(
+    try {
+      await tools.edit.execute(
         { filePath: "target.ts", oldString: "before", newString: "after" },
         sdkCtx,
-      ),
-    ).rejects.toThrow("Match not found in file");
+      );
+      throw new Error("expected edit failure");
+    } catch (error) {
+      expect((error as { code?: string }).code).toBe("ambiguous_match");
+      expect((error as Error).message).toBe(message);
+      expect(
+        (error as { cause?: { code?: string; message?: string; response?: unknown } }).cause,
+      ).toMatchObject({
+        code: "ambiguous_match",
+        message,
+        response,
+      });
+    }
   });
 
   // Regression: Rust reverts a write that fails syntax validation and returns

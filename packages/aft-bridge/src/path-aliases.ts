@@ -6,6 +6,8 @@
  * or resolve paths before comparing the two spellings.
  */
 
+import { AftToolError } from "./error-contract.js";
+
 export type CanonicalPathTool =
   | "read"
   | "write"
@@ -20,11 +22,13 @@ export type CanonicalPathTool =
   | "search"
   | "conflicts";
 
-export class InvalidRequestError extends Error {
-  readonly code = "invalid_request" as const;
-
+export class InvalidRequestError extends AftToolError {
   constructor(message: string) {
-    super(message);
+    super(message, "invalid_request", {
+      success: false,
+      code: "invalid_request",
+      message,
+    });
     this.name = "InvalidRequestError";
   }
 }

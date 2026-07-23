@@ -206,6 +206,14 @@ pub fn handle_batch(req: &RawRequest, ctx: &AppContext) -> Response {
     Response::success(&req.id, result)
 }
 
+/// Build the context shown for one ambiguous match.
+fn build_context(source: &str, target_line: usize, margin: usize) -> String {
+    let lines: Vec<&str> = source.lines().collect();
+    let start = target_line.saturating_sub(margin);
+    let end = (target_line + margin + 1).min(lines.len());
+    lines[start..end].join("\n")
+}
+
 /// Resolve a single edit object to byte offsets against the original source.
 ///
 /// Returns one or more resolved edits on success, or `Err(Response)` on validation failure.
@@ -360,15 +368,29 @@ fn resolve_edit(
         }
 
         if fuzzy_matches.len() > 1 {
-            return Err(Response::error(
+            let occurrences: Vec<serde_json::Value> = fuzzy_matches
+                .iter()
+                .enumerate()
+                .map(|(occurrence_index, matched)| {
+                    let line = source[..matched.byte_start].matches('\n').count();
+                    let context = build_context(source, line, 2);
+                    serde_json::json!({
+                        "index": occurrence_index + 1,
+                        "line": line + 1,
+                        "context": context,
+                    })
+                })
+                .collect();
+            return Err(Response::error_with_data(
                 req_id,
-                "batch_edit_failed",
+                "ambiguous_match",
                 format!(
-                    "batch: edit[{}] match '{}' is ambiguous ({} occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.",
+                    "batch: edits[{}] match '{}' is ambiguous ({} occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.",
                     index,
                     match_str,
                     fuzzy_matches.len()
                 ),
+                serde_json::json!({ "occurrences": occurrences }),
             ));
         }
 
