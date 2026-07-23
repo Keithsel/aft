@@ -5,10 +5,11 @@ use std::path::Path;
 
 pub mod backups;
 pub mod bash_tasks;
+pub mod bash_watches;
 pub mod compression_events;
 pub mod state;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 const MIGRATION_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -128,6 +129,34 @@ ON bash_tasks (harness, project_key, task_id, started_at DESC);
 // link_target for DB-fallback restores when the meta.json sidecar is gone).
 const MIGRATION_V4: &str = r#"
 ALTER TABLE backups ADD COLUMN restore_meta TEXT;
+"#;
+
+// V5 persists async bash_notify / bash_watch pattern registrations so a
+// bridge/daemon restart can re-arm watches and deliver gap matches.
+const MIGRATION_V5: &str = r#"
+CREATE TABLE IF NOT EXISTS bash_pattern_watches (
+  harness        TEXT NOT NULL,
+  session_id     TEXT NOT NULL,
+  task_id        TEXT NOT NULL,
+  watch_id       TEXT NOT NULL,
+  pattern_kind   TEXT NOT NULL,
+  pattern        TEXT NOT NULL,
+  once           INTEGER NOT NULL DEFAULT 1,
+  created_at     INTEGER NOT NULL,
+  stdout_offset  INTEGER NOT NULL DEFAULT 0,
+  stderr_offset  INTEGER NOT NULL DEFAULT 0,
+  pty_offset     INTEGER NOT NULL DEFAULT 0,
+  scanning       INTEGER NOT NULL DEFAULT 1,
+  pending_match  INTEGER NOT NULL DEFAULT 0,
+  match_text     TEXT,
+  match_offset   INTEGER,
+  match_context  TEXT,
+  PRIMARY KEY (harness, session_id, task_id, watch_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bash_pattern_watches_session
+  ON bash_pattern_watches (harness, session_id);
+CREATE INDEX IF NOT EXISTS idx_bash_pattern_watches_task
+  ON bash_pattern_watches (harness, session_id, task_id);
 "#;
 
 #[derive(Debug)]
@@ -252,6 +281,7 @@ fn apply_migration(conn: &mut Connection, version: u32) -> Result<(), OpenError>
         2 => tx.execute_batch(MIGRATION_V2),
         3 => tx.execute_batch(MIGRATION_V3),
         4 => apply_migration_v4(&tx),
+        5 => tx.execute_batch(MIGRATION_V5),
         _ => Ok(()),
     }
     .and_then(|()| {
@@ -292,6 +322,7 @@ mod tests {
     const EXPECTED_TABLES: &[&str] = &[
         "schema_version",
         "bash_tasks",
+        "bash_pattern_watches",
         "compression_events",
         "backups",
         "harness_state",
@@ -303,6 +334,8 @@ mod tests {
         "idx_bash_tasks_status",
         "idx_bash_tasks_session_status",
         "idx_bash_tasks_project_lookup",
+        "idx_bash_pattern_watches_session",
+        "idx_bash_pattern_watches_task",
         "idx_compression_session",
         "idx_compression_session_created",
         "idx_compression_project_key",
@@ -569,6 +602,27 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn migration_v5_adds_bash_pattern_watches_table() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("aft.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        conn.execute_batch(MIGRATION_V4).unwrap();
+        conn.execute("DELETE FROM schema_version", []).unwrap();
+        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])
+            .unwrap();
+        drop(conn);
+
+        let conn = open(&path).unwrap();
+
+        assert_eq!(schema_version(&conn), CURRENT_SCHEMA_VERSION);
+        assert!(sqlite_names(&conn, "table").contains(&"bash_pattern_watches".to_string()));
+        assert!(sqlite_names(&conn, "index").contains(&"idx_bash_pattern_watches_task".to_string()));
     }
 
     #[test]
