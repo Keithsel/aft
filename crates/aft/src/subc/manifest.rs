@@ -330,8 +330,8 @@ mod tests {
             .and_then(|p| p.as_object());
         let read_props = read.expect("read schema properties");
         assert!(
-            read_props.contains_key("filePath"),
-            "read schema must expose filePath"
+            read_props.contains_key("path"),
+            "read schema must expose path"
         );
 
         let status = &by_name["status"].schema;

@@ -30,13 +30,13 @@ describe("aft_safety adapter", () => {
     expect(calls[0].params.arguments).not.toHaveProperty("file");
   });
 
-  test("history requires filePath before bridge dispatch", async () => {
+  test("history requires path before bridge dispatch", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge();
     registerSafetyTool(api, makePluginContext(bridge));
 
     await expect(executeTool(tools.get("aft_safety")!, { op: "history" })).rejects.toThrow(
-      "requires 'filePath'",
+      "requires 'path'",
     );
     expect(calls).toHaveLength(0);
   });

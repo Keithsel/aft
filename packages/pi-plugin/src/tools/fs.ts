@@ -32,16 +32,9 @@ const DeleteParams = Type.Object({
 });
 
 const MoveParams = Type.Object({
-  filePath: Type.Optional(
-    Type.String({
-      description: "Source file path to move (absolute or relative to project root)",
-    }),
-  ),
-  path: Type.Optional(
-    Type.String({
-      description: "Alias for `filePath` — provide one of the two.",
-    }),
-  ),
+  path: Type.String({
+    description: "Source file path to move (absolute or relative to project root)",
+  }),
   destination: Type.String({
     description: "Destination file path (absolute or relative to project root)",
   }),
@@ -127,7 +120,7 @@ export function renderFsResult(
   const moveArgs = args as Static<typeof MoveParams>;
   return renderSections(
     [
-      `${theme.fg("success", "✓ moved")} ${theme.fg("accent", shortenPath(moveArgs.path ?? moveArgs.filePath ?? ""))}`,
+      `${theme.fg("success", "✓ moved")} ${theme.fg("accent", shortenPath(moveArgs.path ?? ""))}`,
       `${theme.fg("muted", "to")} ${theme.fg("accent", shortenPath(moveArgs.destination))}`,
     ],
     context,

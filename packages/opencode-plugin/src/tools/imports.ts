@@ -27,12 +27,12 @@ export function importTools(ctx: PluginContext): Record<string, ToolDefinition> 
         "Ops:\n" +
         "- 'add': Add an import. Auto-detects group (stdlib/external/internal), deduplicates. Requires 'module'. Optional 'names', 'defaultImport', 'typeOnly'.\n" +
         "- 'remove': Remove an import or a specific named import. Requires 'module'. Provide 'removeName' to remove a single named import; omit to remove the entire import.\n" +
-        `- 'organize': Re-sort and re-group all imports by language convention, deduplicate. Requires only 'filePath'. ${organizeRecovery}`,
+        `- 'organize': Re-sort and re-group all imports by language convention, deduplicate. Requires only 'path'. ${organizeRecovery}`,
       // Parameters are Zod-optional because different ops need different subsets.
       // Runtime guards below validate per-op requirements and give clear errors.
       args: {
         op: z.enum(["add", "remove", "organize"]).describe("Import operation"),
-        filePath: z.string().describe("Path to the file (absolute or relative to project root)"),
+        path: z.string().describe("Path to the file (absolute or relative to project root)"),
         module: z
           .string()
           .optional()
@@ -93,7 +93,7 @@ export function importTools(ctx: PluginContext): Record<string, ToolDefinition> 
           throw new Error(`'module' is required for '${op}' op`);
         }
 
-        const filePath = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
+        const filePath = await resolvePathArg(ctx, context, args.path as string);
 
         // External-directory check first (mirrors opencode-native edit.ts:68).
         {

@@ -8,8 +8,8 @@
  *    in Pi's system prompt (Pi's built-ins use generic one-liners otherwise).
  *  - `renderCall` / `renderResult` for `write` and `edit`: without these,
  *    Pi's ToolExecutionComponent falls back to the *built-in* renderer for
- *    same-named tools, which reads `path` and `edits[]` and garbles our
- *    `filePath` / `oldString` / `newString` output (issue #15).
+ *    same-named tools, which reads `path` and `edits[]` and can garble output
+ *    when a renderer does not match the registered argument shape (issue #15).
  *  - Structured `details: { diff, firstChangedLine }` so the rendered diff
  *    also ends up in the agent's message stream, matching Pi's convention.
  *
@@ -21,7 +21,6 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
-  coerceAliasedStringParam,
   decodeFileUrl,
   formatEditSummary,
   formatReadFooter as formatSharedReadFooter,
@@ -234,19 +233,13 @@ export async function assertExternalDirectoryPermission(
 
 // OpenAI-compatible tool calling requires a root JSON Schema object.
 // TypeBox unions of object variants serialize to a bare root-level `anyOf`, so
-// keep these schemas flat and enforce the required primary/alias pair at
-// runtime. `coerceAliasedStringParam` preserves the declared-field precedence.
+// keep these schemas flat and validate mode-specific required fields at runtime.
+// Compatibility normalization runs before host validation, allowing legacy aliases
+// to be converted while explicitly provided canonical fields remain authoritative.
 const ReadParams = Type.Object({
-  path: Type.Optional(
-    Type.String({
-      description: "Path to the file to read (absolute or relative to project root)",
-    }),
-  ),
-  filePath: Type.Optional(
-    Type.String({
-      description: "Alias for `path` — provide one of the two.",
-    }),
-  ),
+  path: Type.String({
+    description: "Path to the file to read (absolute or relative to project root)",
+  }),
   startLine: optionalInt(1, Number.MAX_SAFE_INTEGER, "1-based line to start reading from"),
   endLine: optionalInt(1, Number.MAX_SAFE_INTEGER, "1-based line to stop reading at (inclusive)"),
   limit: optionalInt(1, Number.MAX_SAFE_INTEGER, "Maximum number of lines to return"),
@@ -258,16 +251,9 @@ const ReadParams = Type.Object({
 });
 
 const WriteParams = Type.Object({
-  filePath: Type.Optional(
-    Type.String({
-      description: "Path to the file to write (absolute or relative to project root)",
-    }),
-  ),
-  path: Type.Optional(
-    Type.String({
-      description: "Alias for `filePath` — provide one of the two.",
-    }),
-  ),
+  path: Type.String({
+    description: "Path to the file to write (absolute or relative to project root)",
+  }),
   content: Type.String({ description: "Full file contents to write" }),
 });
 
@@ -282,7 +268,7 @@ const BatchEditParams = Type.Object({
     Type.Boolean({ description: "Replace every occurrence for this batch item" }),
   ),
   occurrence: optionalInt(
-    0,
+    1,
     Number.MAX_SAFE_INTEGER,
     "1-based occurrence for this batch item (1 = first match)",
   ),
@@ -300,20 +286,9 @@ const BatchEditParams = Type.Object({
 });
 
 const EditParams = Type.Object({
-  filePath: Type.Optional(
-    Type.String({
-      description: "Path to the file to edit (absolute or relative to project root)",
-    }),
-  ),
-  path: Type.Optional(
-    Type.String({
-      description: "Alias for `filePath` — provide one of the two.",
-    }),
-  ),
-  oldString: Type.Optional(
-    Type.String({ description: "Text to find (exact match, fuzzy fallback)" }),
-  ),
-  newString: Type.Optional(Type.String({ description: "Replacement text (omit to delete match)" })),
+  path: Type.String({
+    description: "Path to the file to edit (absolute or relative to project root)",
+  }),
   symbol: Type.Optional(
     Type.String({ description: "Named symbol to replace (function, class, type)" }),
   ),
@@ -323,24 +298,17 @@ const EditParams = Type.Object({
         "Replacement content for symbol mode. For whole-file writes, use the `write` tool.",
     }),
   ),
-  replaceAll: Type.Optional(Type.Boolean({ description: "Replace every occurrence" })),
-  // min stays 0 so occurrence: 0 reaches the boundary normalizer's clear
-  // 1-based rejection instead of being dropped by the empty-param sentinel.
-  occurrence: optionalInt(
-    0,
-    Number.MAX_SAFE_INTEGER,
-    "1-based occurrence to replace when multiple matches exist (1 = first match)",
-  ),
   appendContent: Type.Optional(
     Type.String({
       description:
-        "Append text to the end of the file (creates the file if missing, parent dirs auto-created). When set, edits/oldString/newString are ignored.",
+        "Append text to the end of the file (creates the file if missing, parent dirs auto-created). When set, other edit modes are ignored.",
     }),
   ),
   edits: Type.Optional(
     Type.Array(BatchEditParams, {
+      minItems: 1,
       description:
-        "Batch edits — array of { oldString, newString }, { oldString, newString, replaceAll: true }, or { startLine, endLine, content } objects applied atomically.",
+        "Batch edits — non-empty array of { oldString, newString }, { oldString, newString, replaceAll: true }, or { startLine, endLine, content } objects applied atomically.",
     }),
   ),
 });
@@ -418,12 +386,12 @@ interface FileMutationDetails {
   noOp?: boolean;
 }
 
-function readPathArg(args: { path?: unknown; filePath?: unknown }): string | undefined {
-  return coerceAliasedStringParam(args.path, args.filePath);
+function readPathArg(args: { path?: unknown }): string | undefined {
+  return typeof args.path === "string" ? args.path : undefined;
 }
 
-function mutationFilePathArg(args: { filePath?: unknown; path?: unknown }): string | undefined {
-  return coerceAliasedStringParam(args.filePath, args.path);
+function mutationFilePathArg(args: { path?: unknown }): string | undefined {
+  return typeof args.path === "string" ? args.path : undefined;
 }
 
 function hasOwn(record: Record<string, unknown>, key: string): boolean {
@@ -591,8 +559,8 @@ export function registerHoistedTools(
       withPathAliasPreparation({
         name: "write",
         label: "write",
-        description: `Write content to a file, creating it and parent directories automatically. ${writeBackupText} Auto-formats when the project has a formatter configured. Uses \`filePath\` (not \`path\`). For partial edits, use the \`edit\` tool.`,
-        promptSnippet: "Create or overwrite files (uses filePath; auto-formats)",
+        description: `Write content to a file, creating it and parent directories automatically. ${writeBackupText} Auto-formats when the project has a formatter configured. Uses \`path\`. For partial edits, use the \`edit\` tool.`,
+        promptSnippet: "Create or overwrite files (uses path; auto-formats)",
         promptGuidelines: ["Use write only for new files or complete rewrites."],
         parameters: WriteParams,
         async execute(
@@ -604,11 +572,11 @@ export function registerHoistedTools(
         ) {
           const filePathArg = mutationFilePathArg(params);
           if (typeof filePathArg !== "string") {
-            throw new Error("write: missing required parameter `filePath`");
+            throw new Error("write: missing required parameter `path`");
           }
           // Resolve ~ and relative paths before the permission check. Pass the
-          // original filePath string in the request so the path the agent
-          // receives stays exactly as provided.
+          // original path string in the request so the path the agent receives
+          // stays exactly as provided.
           const filePath = await resolvePathArg(extCtx.cwd, filePathArg);
           await assertExternalDirectoryPermission(extCtx, filePath, {
             restrictToProjectRoot: surface.restrictToProjectRoot,
@@ -640,14 +608,14 @@ export function registerHoistedTools(
         name: "edit",
         label: "edit",
         description:
-          "Edit part of a file via `appendContent`, batch `edits[]`, or `oldString`/`newString` find-and-replace. Batch `{ oldString, newString, replaceAll: true }` replaces every match. Provide exactly one mode per call: appendContent, edits[], or oldString/newString (mixing modes is rejected).",
+          "Edit part of a file via `appendContent`, batch `edits[]`, or symbol plus `content`. Batch `{ oldString, newString, replaceAll: true }` replaces every match. Provide exactly one mode per call: appendContent, edits[], or symbol plus content (mixing modes is rejected).",
         promptSnippet:
-          "Partial file edits via appendContent, edits[], or oldString/newString (exactly one mode per call).",
+          "Partial file edits via appendContent, edits[], or symbol plus content (exactly one mode per call).",
         promptGuidelines: [
           "Prefer edit over write when changing part of an existing file.",
           "Use appendContent when adding text to the end of a file.",
           "Use edits[] for multiple atomic changes in one file.",
-          "Include enough surrounding context in oldString to make the match unique, or set replaceAll/occurrence explicitly.",
+          "Include enough surrounding context in an edits[] find/replace item to make the match unique, or set replaceAll/occurrence explicitly.",
         ],
         parameters: EditParams,
         async execute(
@@ -663,7 +631,7 @@ export function registerHoistedTools(
               "edit: 'startLine'/'endLine' are not top-level parameters. " +
                 "For line-range edits, nest them inside the `edits` array: " +
                 '`edits: [{ startLine: N, endLine: M, content: "..." }]`. ' +
-                "For find/replace, use `oldString`/`newString` instead.",
+                "For find/replace, use an item in `edits[]` instead.",
             );
           }
 
@@ -673,8 +641,8 @@ export function registerHoistedTools(
           }
           if (params.edits !== undefined) validateBatchEdits(params.edits);
           // Resolve ~ and relative paths before the permission check. Pass the
-          // original filePath string in the request so the path the agent
-          // receives stays exactly as provided.
+          // original path string in the request so the path the agent receives
+          // stays exactly as provided.
           const filePath = await resolvePathArg(extCtx.cwd, filePathArg);
           await assertExternalDirectoryPermission(extCtx, filePath, {
             restrictToProjectRoot: surface.restrictToProjectRoot,

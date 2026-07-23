@@ -30,12 +30,9 @@ import {
 
 const ImportParams = Type.Object({
   op: StringEnum(["add", "remove", "organize"] as const, { description: "Import operation" }),
-  filePath: Type.Optional(
-    Type.String({ description: "Path to the file (absolute or relative to project root)" }),
-  ),
-  path: Type.Optional(
-    Type.String({ description: "Alias for `filePath` — provide one of the two." }),
-  ),
+  path: Type.String({
+    description: "Path to the file (absolute or relative to project root)",
+  }),
   module: Type.Optional(
     Type.String({ description: "Module path (required for add/remove), e.g. 'react', './utils'" }),
   ),
@@ -98,7 +95,7 @@ export function buildImportSections(
             .join(" · ")
         : "No imports found";
     return [
-      `${theme.fg("success", "organized")} ${theme.fg("accent", asString(response.file) ?? args.path ?? args.filePath ?? "")}`,
+      `${theme.fg("success", "organized")} ${theme.fg("accent", asString(response.file) ?? args.path ?? "")}`,
       `${theme.fg("muted", "groups")} ${groupText}`,
       `${theme.fg("muted", "duplicates removed")} ${asNumber(response.removed_duplicates) ?? 0}`,
     ];
@@ -112,7 +109,7 @@ export function buildImportSections(
         : theme.fg("success", "added");
     return [
       `${status} ${theme.fg("accent", moduleName)}`,
-      `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.path ?? args.filePath ?? "")}`,
+      `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.path ?? "")}`,
       `${theme.fg("muted", "group")} ${asString(response.group) ?? "—"}`,
     ];
   }
@@ -124,7 +121,7 @@ export function buildImportSections(
     : `${theme.fg("warning", "not present")} ${theme.fg("accent", moduleName)}`;
   return [
     removeStatus,
-    `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.path ?? args.filePath ?? "")}`,
+    `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.path ?? "")}`,
     args.removeName
       ? `${theme.fg("muted", "name")} ${args.removeName}`
       : `${theme.fg("muted", "scope")} entire import`,
@@ -139,7 +136,7 @@ export function renderImportCall(
 ) {
   const summary = [
     theme.fg("accent", args.op),
-    accentPath(theme, args.path ?? args.filePath ?? ""),
+    accentPath(theme, args.path ?? ""),
     args.module ? theme.fg("toolOutput", args.module) : undefined,
   ]
     .filter(Boolean)

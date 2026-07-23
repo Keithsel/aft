@@ -39,9 +39,7 @@ export function refactoringTools(ctx: PluginContext): Record<string, ToolDefinit
       // Runtime guards below validate per-op requirements and give clear errors.
       args: {
         op: z.enum(["move", "extract", "inline"]).describe("Refactoring operation"),
-        filePath: z
-          .string()
-          .describe("Path to the source file (absolute or relative to project root)"),
+        path: z.string().describe("Path to the source file (absolute or relative to project root)"),
         symbol: z
           .string()
           .optional()
@@ -106,7 +104,7 @@ export function refactoringTools(ctx: PluginContext): Record<string, ToolDefinit
           throw new Error("'callSiteLine' is required for 'inline' op");
         }
 
-        const filePath = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
+        const filePath = await resolvePathArg(ctx, context, args.path as string);
         const destination =
           op === "move"
             ? await resolvePathArg(ctx, context, args.destination as string)

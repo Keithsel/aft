@@ -54,8 +54,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
         "File safety and recovery operations.\n\n" +
         "Per-file undo stack is capped at 20 entries (oldest evicted).\n\n" +
         "Ops:\n" +
-        "- 'undo': Undo the entire last tool call when 'filePath' is omitted (typical), or undo the last edit to one file when 'filePath' is provided. Note: pops from the undo stack (irreversible, no redo). Use 'history' to inspect per-file history before undoing.\n" +
-        "- 'history': List all edit snapshots for a file. Requires 'filePath'.\n" +
+        "- 'undo': Undo the entire last tool call when 'path' is omitted (typical), or undo the last edit to one file when 'path' is provided. Note: pops from the undo stack (irreversible, no redo). Use 'history' to inspect per-file history before undoing.\n" +
+        "- 'history': List all edit snapshots for a file. Requires 'path'.\n" +
         "- 'checkpoint': Save a named snapshot of tracked files. Requires 'name'. Optional 'files' to snapshot specific files only.\n" +
         "- 'restore': Restore files to a previously saved checkpoint. Requires 'name'.\n" +
         "- 'list': List all available named checkpoints. No extra params needed.\n\n" +
@@ -67,7 +67,7 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
         op: z
           .enum(["undo", "history", "checkpoint", "restore", "list"])
           .describe("Safety operation"),
-        filePath: z
+        path: z
           .string()
           .optional()
           .describe(
@@ -84,7 +84,7 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
       execute: async (args, context): Promise<string> => {
         const op = args.op as string;
 
-        if (op === "history" && typeof (args.path ?? args.filePath) !== "string") {
+        if (op === "history" && typeof args.path !== "string") {
           throw new Error(`'path' is required for '${op}' op`);
         }
         if ((op === "checkpoint" || op === "restore") && typeof args.name !== "string") {
@@ -93,8 +93,7 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
 
         if (op === "undo") {
           const previewParams: Record<string, unknown> = {};
-          if (typeof (args.path ?? args.filePath) === "string")
-            previewParams.file = args.path ?? args.filePath;
+          if (typeof args.path === "string") previewParams.file = args.path;
           const preview = await callBridge(ctx, context, "undo_preview", previewParams);
           if (preview.success === false) {
             throw new Error(bridgeErrorMessage(preview, "undo preview failed"));
@@ -107,8 +106,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
           }
 
           const filePath =
-            typeof (args.path ?? args.filePath) === "string"
-              ? resolveAbsolutePath(context, (args.path ?? args.filePath) as string)
+            typeof args.path === "string"
+              ? resolveAbsolutePath(context, args.path as string)
               : undefined;
           const permissionError = await askEditPermission(
             context,
@@ -123,8 +122,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
           const checkpointFiles =
             coercedFiles.length > 0
               ? coercedFiles
-              : typeof (args.path ?? args.filePath) === "string"
-                ? [args.path ?? args.filePath]
+              : typeof args.path === "string"
+                ? [args.path]
                 : undefined;
           if (Array.isArray(checkpointFiles)) {
             const projectRoot = await resolveProjectRoot(ctx, context);
@@ -171,9 +170,7 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
         // paths are left for Rust to resolve against the project root.
         const payloadFiles = coerceStringArray(args.files).map(expandTilde);
         const filePathArg =
-          typeof (args.path ?? args.filePath) === "string"
-            ? expandTilde((args.path ?? args.filePath) as string)
-            : undefined;
+          typeof args.path === "string" ? expandTilde(args.path as string) : undefined;
         if (filePathArg !== undefined) rawArgs.filePath = filePathArg;
         if (payloadFiles.length > 0) rawArgs.files = payloadFiles;
 

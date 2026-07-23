@@ -66,52 +66,10 @@ export function prepareOpenCodeArguments(
     return prepareCanonicalEditArguments(toolName, rawArguments);
   }
 
-  const prepared = prepareCanonicalPathArguments(toolName, rawArguments);
-  const tool = bareToolName(toolName);
-  if (
-    ![
-      "read",
-      "write",
-      "edit",
-      "zoom",
-      "callgraph",
-      "safety",
-      "move",
-      "import",
-      "refactor",
-    ].includes(tool)
-  ) {
-    return prepared;
-  }
-
-  const result = { ...prepared };
-  if (typeof result.path === "string") {
-    result.filePath = result.path;
-    delete result.path;
-  }
-  if (typeof result.toPath === "string") {
-    result.toFile = result.toPath;
-    delete result.toPath;
-  }
-  if (Array.isArray(result.targets)) {
-    result.targets = result.targets.map((target) => {
-      if (!target || typeof target !== "object" || Array.isArray(target)) return target;
-      const converted = { ...(target as Record<string, unknown>) };
-      if (typeof converted.path === "string") {
-        converted.filePath = converted.path;
-        delete converted.path;
-      }
-      return converted;
-    });
-  } else if (result.targets && typeof result.targets === "object") {
-    const converted = { ...(result.targets as Record<string, unknown>) };
-    if (typeof converted.path === "string") {
-      converted.filePath = converted.path;
-      delete converted.path;
-    }
-    result.targets = converted;
-  }
-  return result;
+  // Keep the canonical object intact after compatibility normalization. The host
+  // schema and execute handler must observe the same published vocabulary; the
+  // bridge payload conversion belongs to each command adapter below that boundary.
+  return prepareCanonicalPathArguments(toolName, rawArguments);
 }
 
 function prepareToolMap(tools: Record<string, ToolDefinition>): Record<string, ToolDefinition> {

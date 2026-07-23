@@ -33,13 +33,13 @@ them either way when the surface tier includes them.)
 
 | Tool | Description | Key Params |
 |------|-------------|------------|
-| `read` | File read, directory listing, image/PDF detection | `filePath`, `startLine`, `endLine`, `offset`, `limit` |
-| `write` | Write file with auto-dirs, backup, format, inline diagnostics | `filePath`, `content` |
-| `edit` | Find/replace, symbol replace, batch, glob | `filePath`, `oldString`, `newString`, `symbol`, `content`, `edits[]` |
+| `read` | File read, directory listing, image/PDF detection | `path`, `startLine`, `endLine`, `offset`, `limit` |
+| `write` | Write file with auto-dirs, backup, format, inline diagnostics | `path`, `content` |
+| `edit` | Find/replace, symbol replace, batch, glob | `path`, `oldString`, `newString`, `symbol`, `content`, `edits[]` |
 | `apply_patch` | `*** Begin Patch` multi-file patch format | `patchText` |
 | `ast_grep_search` | AST pattern search with meta-variables | `pattern`, `lang`, `paths[]`, `globs[]` |
 | `ast_grep_replace` | AST pattern replace (applies by default) | `pattern`, `rewrite`, `lang`, `dryRun` |
-| `lsp_diagnostics` | Errors/warnings from language server | `filePath`, `directory`, `severity`, `waitMs` |
+| `lsp_diagnostics` | Errors/warnings from language server | `path`, `directory`, `severity`, `waitMs` |
 | `grep` | Trigram-indexed regex search with compressed output | `pattern`, `path`, `include`, `exclude` |
 | `glob` | Indexed file discovery with compressed output | `pattern`, `path` |
 
@@ -52,41 +52,41 @@ Always registered with `aft_` prefix regardless of hoisting setting.
 | Tool | Description | Key Params |
 |------|-------------|------------|
 | `aft_outline` | Structural outline of a file, directory, files, or URL; or indexed file tree | `target` (string or array), `files` |
-| `aft_zoom` | Inspect symbols (same-file or cross-file); opt-in call-graph annotations | `filePath`, `symbols` (string or array), `targets`, `url`, `callgraph` |
-| `aft_import` | Language-aware import add/remove/organize | `op`, `filePath`, `module`, `names[]` |
+| `aft_zoom` | Inspect symbols (same-file or cross-file); opt-in call-graph annotations | `path`, `symbols` (string or array), `targets`, `url`, `callgraph` |
+| `aft_import` | Language-aware import add/remove/organize | `op`, `path`, `module`, `names[]` |
 | `aft_conflicts` | Show all git merge conflicts with line-numbered regions | `path` (optional) |
 | `aft_search` | Hybrid semantic + lexical code search by meaning | `query`, `topK`, `path` |
 | `aft_inspect` | Codebase-health snapshot (TODOs, metrics, dead code, unused exports, duplicates) | `sections`, `scope`, `topK` |
-| `aft_safety` | Undo, history, checkpoints, restore | `op`, `filePath`, `name` |
+| `aft_safety` | Undo, history, checkpoints, restore | `op`, `path`, `name` |
 
 **All tier** (set `tool_surface: "all"`):
 
 | Tool | Description | Key Params |
 |------|-------------|------------|
 | `aft_delete` | Delete one or more files (or directories) with backup | `files`, `recursive` |
-| `aft_move` | Move or rename a file with backup | `filePath`, `destination` |
-| `aft_callgraph` | Call graph and data-flow navigation | `op`, `filePath`, `symbol`, `depth` |
-| `aft_refactor` | Workspace-wide move, extract, inline | `op`, `filePath`, `symbol`, `destination` |
+| `aft_move` | Move or rename a file with backup | `path`, `destination` |
+| `aft_callgraph` | Call graph and data-flow navigation | `op`, `path`, `symbol`, `depth` |
+| `aft_refactor` | Workspace-wide move, extract, inline | `op`, `path`, `symbol`, `destination` |
 
 ---
 
 ### read
 
-Plain file reading and directory listing. Pass `filePath` to read a file, or a directory path to
+Plain file reading and directory listing. Pass `path` to read a file, or a directory path to
 list its entries. Paginate large files with `startLine`/`endLine` or `offset`/`limit`.
 
 ```json
 // Read full file
-{ "filePath": "src/app.ts" }
+{ "path": "src/app.ts" }
 
 // Read lines 50-100
-{ "filePath": "src/app.ts", "startLine": 50, "endLine": 100 }
+{ "path": "src/app.ts", "startLine": 50, "endLine": 100 }
 
 // Read 30 lines from line 200
-{ "filePath": "src/app.ts", "offset": 200, "limit": 30 }
+{ "path": "src/app.ts", "offset": 200, "limit": 30 }
 
 // List directory
-{ "filePath": "src/" }
+{ "path": "src/" }
 ```
 
 Returns line-numbered content (e.g. `1: const x = 1`). Directories return sorted entries with
@@ -103,7 +103,7 @@ Write the full content of a file. Creates the file (and any missing parent direc
 doesn't exist. Backs up any existing content before overwriting.
 
 ```json
-{ "filePath": "src/config.ts", "content": "export const TIMEOUT = 10000;\n" }
+{ "path": "src/config.ts", "content": "export const TIMEOUT = 10000;\n" }
 ```
 
 Auto-formats using the project's configured formatter (biome, oxfmt, prettier, etc.).
@@ -120,21 +120,21 @@ For partial edits (find/replace), use `edit` instead.
 
 The main editing tool. Mode is determined by which parameters you pass:
 
-**Find and replace** — pass `filePath` + `oldString` + `newString`:
+**Find and replace** — pass `path` + `oldString` + `newString`:
 
 ```json
-{ "filePath": "src/config.ts", "oldString": "const TIMEOUT = 5000", "newString": "const TIMEOUT = 10000" }
+{ "path": "src/config.ts", "oldString": "const TIMEOUT = 5000", "newString": "const TIMEOUT = 10000" }
 ```
 
 Matching uses a 4-pass fuzzy fallback: exact match first, then trailing-whitespace trim, then
 both-ends trim, then Unicode normalization. Returns an error if multiple matches exist — use
 `occurrence: N` (0-indexed) to pick one, or `replaceAll: true` to replace all.
 
-**Symbol replace** — pass `filePath` + `symbol` + `content`:
+**Symbol replace** — pass `path` + `symbol` + `content`:
 
 ```json
 {
-  "filePath": "src/utils.ts",
+  "path": "src/utils.ts",
   "symbol": "formatDate",
   "content": "export function formatDate(d: Date): string {\n  return d.toISOString().split('T')[0];\n}"
 }
@@ -142,11 +142,11 @@ both-ends trim, then Unicode normalization. Returns an error if multiple matches
 
 Includes decorators, doc comments, and attributes in the replacement range.
 
-**Batch edits** — pass `filePath` + `edits` array. Atomic: all edits apply or none do.
+**Batch edits** — pass `path` + `edits` array. Atomic: all edits apply or none do.
 
 ```json
 {
-  "filePath": "src/constants.ts",
+  "path": "src/constants.ts",
   "edits": [
     { "oldString": "VERSION = '1.0'", "newString": "VERSION = '2.0'" },
     { "startLine": 5, "endLine": 7, "content": "// updated header\n" }
@@ -158,16 +158,16 @@ Set `content` to `""` to delete lines. Per-edit `occurrence` is supported.
 
 To edit multiple files, make parallel `edit` calls in one response.
 
-**Glob replace** — use a glob as `filePath` with `replaceAll: true`:
+**Glob replace** — use a glob as `path` with `replaceAll: true`:
 
 ```json
-{ "filePath": "src/**/*.ts", "oldString": "oldName", "newString": "newName", "replaceAll": true }
+{ "path": "src/**/*.ts", "oldString": "oldName", "newString": "newName", "replaceAll": true }
 ```
 
-**Append to file** — pass `filePath` + `appendContent`:
+**Append to file** — pass `path` + `appendContent`:
 
 ```json
-{ "filePath": "notes.md", "appendContent": "\n## New section\n..." }
+{ "path": "notes.md", "appendContent": "\n## New section\n..." }
 ```
 
 Creates the file (and parent directories) if missing. Faster than read+write for adding to logs,
@@ -412,13 +412,13 @@ User-defined servers go in `lsp.servers` (see Configuration). Disable any built-
 
 ```json
 // Check a single file (pull where supported, push fallback otherwise)
-{ "filePath": "src/api.ts", "severity": "error" }
+{ "path": "src/api.ts", "severity": "error" }
 
 // Check files under a directory (workspace pull from active servers + 200-file walk for unchecked listing)
 { "directory": "src/", "severity": "all" }
 
 // Wait up to 2s for push diagnostics on push-only servers (bash, yaml, typescript)
-{ "filePath": "deploy.sh", "waitMs": 2000 }
+{ "path": "deploy.sh", "waitMs": 2000 }
 ```
 
 Response shape:
@@ -497,25 +497,25 @@ reading entire files (use `read` for that).
 
 ```json
 // Single symbol in a file
-{ "filePath": "src/app.ts", "symbols": "handleRequest" }
+{ "path": "src/app.ts", "symbols": "handleRequest" }
 
 // Add call-graph annotations (calls_out / called_by) for the symbol
-{ "filePath": "src/app.ts", "symbols": "handleRequest", "callgraph": true }
+{ "path": "src/app.ts", "symbols": "handleRequest", "callgraph": true }
 
 // Multiple symbols in the SAME file (polymorphic: string or array)
-{ "filePath": "src/app.ts", "symbols": ["Config", "createApp"] }
+{ "path": "src/app.ts", "symbols": ["Config", "createApp"] }
 
 // Cross-file batch — each target names its own file
 { "targets": [
-  { "filePath": "src/app.ts", "symbol": "createApp" },
-  { "filePath": "src/db.ts", "symbol": "connect" }
+  { "path": "src/app.ts", "symbol": "createApp" },
+  { "path": "src/db.ts", "symbol": "connect" }
 ] }
 
 // Section of a remote/cached document by heading (OpenCode)
 { "url": "https://docs.example.com/api.md", "symbols": "Authentication" }
 ```
 
-`symbols` (string or array, same file), `targets` (cross-file array), and `filePath`/`url`
+`symbols` (string or array, same file), `targets` (cross-file array), and `path`/`url`
 (single-file or URL) are mutually exclusive — pass exactly one mode. For Markdown/HTML, use the
 heading text as the symbol name. Cross-file batches return partial results with per-symbol
 `symbol_not_found` rather than failing the whole call.
@@ -928,7 +928,7 @@ Move or rename a file. Creates parent directories for the destination automatica
 to copy+delete for cross-filesystem moves. Backs up the original before moving.
 
 ```json
-{ "filePath": "src/helpers.ts", "destination": "src/utils/helpers.ts" }
+{ "path": "src/helpers.ts", "destination": "src/utils/helpers.ts" }
 ```
 
 Returns `{ file, destination, moved, backup_id }` on success.
@@ -945,14 +945,14 @@ Call graph and data-flow analysis across the workspace.
 | `callers` | Where is this function called from? (reverse, default depth 1) |
 | `trace_to` | How does execution reach this function from entry points? |
 | `impact` | What callers are affected if this function changes? |
-| `trace_to_symbol` | Shortest call path from one symbol to another. Needs `toSymbol` (and `toFile` to disambiguate). |
+| `trace_to_symbol` | Shortest call path from one symbol to another. Needs `toSymbol` (and `toPath` to disambiguate). |
 | `trace_data` | Follow a value through assignments and parameters. Needs `expression`. |
 
 ```json
 // Find everything that would break if processPayment changes
 {
   "op": "impact",
-  "filePath": "src/payments/processor.ts",
+  "path": "src/payments/processor.ts",
   "symbol": "processPayment",
   "depth": 3
 }
@@ -969,16 +969,16 @@ Kotlin, Scala, Swift, Ruby, Lua, C, C++, Perl, and Vue.
 // Add named imports with auto-grouping and deduplication
 {
   "op": "add",
-  "filePath": "src/api.ts",
+  "path": "src/api.ts",
   "module": "react",
   "names": ["useState", "useEffect"]
 }
 
 // Remove a single named import
-{ "op": "remove", "filePath": "src/api.ts", "module": "react", "removeName": "useEffect" }
+{ "op": "remove", "path": "src/api.ts", "module": "react", "removeName": "useEffect" }
 
 // Re-sort and deduplicate all imports by language convention
-{ "op": "organize", "filePath": "src/api.ts" }
+{ "op": "organize", "path": "src/api.ts" }
 ```
 
 Beyond `module`/`names`, `add` accepts language-appropriate fields: `defaultImport` and
@@ -1009,7 +1009,7 @@ Workspace-wide refactoring that updates imports and references across all files.
 // Move a utility function to a shared module
 {
   "op": "move",
-  "filePath": "src/pages/home.ts",
+  "path": "src/pages/home.ts",
   "symbol": "formatCurrency",
   "destination": "src/utils/format.ts"
 }
@@ -1025,7 +1025,7 @@ Backup and recovery for risky edits.
 
 | Op | Description |
 |----|-------------|
-| `undo` | Undo the entire last tool call (omit `filePath`), or the last edit to one file (pass `filePath`) |
+| `undo` | Undo the entire last tool call (omit `path`), or the last edit to one file (pass `path`) |
 | `history` | List all edit snapshots for a file |
 | `checkpoint` | Save a named snapshot of tracked files |
 | `restore` | Restore files to a named checkpoint |
@@ -1041,6 +1041,6 @@ Backup and recovery for risky edits.
 
 > **Note:** Backups are persisted to disk (SQLite-backed) and survive bridge and host restarts.
 > Undo is operation-scoped: a single multi-file delete, directory delete, file move, symbol move,
-> or AST replace is reverted atomically by one `undo` with no `filePath`. Per-file undo stack is
+> or AST replace is reverted atomically by one `undo` with no `path`. Per-file undo stack is
 > capped at 20 entries — oldest snapshots are evicted when exceeded. History, undo, and
 > checkpoints are session-private even when multiple sessions share one project bridge.

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "artifact_id": "ART-V049-S5-SOURCE-INVENTORY-001",
+  "artifact_version": "0.49.0",
+  "manifest_id": "INV-V049-GOVERNED-PUBLICATION-SURFACES-001",
+  "purpose": "Checked source inventory for v0.49 agent-visible schemas, descriptions, examples, prompts, guidelines, plugin READMEs, and current documentation.",
+  "legacy_vocabulary": ["filePath", "toFile"],
+  "surfaces": [
+    {"id":"SURFACE-V049-OC-HOISTED-001","path":"packages/opencode-plugin/src/tools/hoisted.ts","kind":"registered schemas descriptions examples","owner":"opencode-plugin","profiles":["REG-V049-OC-MIN","REG-V049-OC-REC","REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-OC-READING-001","path":"packages/opencode-plugin/src/tools/reading.ts","kind":"registered schemas descriptions examples","owner":"opencode-plugin","profiles":["REG-V049-OC-MIN","REG-V049-OC-REC","REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-OC-NAVIGATION-001","path":"packages/opencode-plugin/src/tools/navigation.ts","kind":"registered schemas descriptions examples","owner":"opencode-plugin","profiles":["REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-OC-SAFETY-001","path":"packages/opencode-plugin/src/tools/safety.ts","kind":"registered schemas descriptions examples","owner":"opencode-plugin","profiles":["REG-V049-OC-MIN","REG-V049-OC-REC","REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-OC-IMPORTS-001","path":"packages/opencode-plugin/src/tools/imports.ts","kind":"registered schemas descriptions examples","owner":"opencode-plugin","profiles":["REG-V049-OC-REC","REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-OC-REFACTORING-001","path":"packages/opencode-plugin/src/tools/refactoring.ts","kind":"registered schemas descriptions examples","owner":"opencode-plugin","profiles":["REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-OC-WORKFLOW-001","path":"packages/opencode-plugin/src/workflow-hints.ts","kind":"agent prefix workflow hints","owner":"opencode-plugin","profiles":["REG-V049-OC-MIN","REG-V049-OC-REC","REG-V049-OC-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-HOISTED-001","path":"packages/pi-plugin/src/tools/hoisted.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-MIN","REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-READING-001","path":"packages/pi-plugin/src/tools/reading.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-MIN","REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-NAVIGATION-001","path":"packages/pi-plugin/src/tools/navigate.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-SAFETY-001","path":"packages/pi-plugin/src/tools/safety.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-MIN","REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-IMPORTS-001","path":"packages/pi-plugin/src/tools/imports.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-REFACTOR-001","path":"packages/pi-plugin/src/tools/refactor.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-FS-001","path":"packages/pi-plugin/src/tools/fs.ts","kind":"registered schemas descriptions prompts guidelines examples","owner":"pi-plugin","profiles":["REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-WORKFLOW-001","path":"packages/pi-plugin/src/workflow-hints.ts","kind":"agent prefix workflow hints","owner":"pi-plugin","profiles":["REG-V049-PI-MIN","REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-DOC-TOOLS-001","path":"docs/tools.md","kind":"current tool reference","owner":"documentation","profiles":["REG-V049-OC-MIN","REG-V049-OC-REC","REG-V049-OC-ALL","REG-V049-PI-MIN","REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-PI-README-001","path":"packages/pi-plugin/README.md","kind":"plugin README","owner":"pi-plugin","profiles":["REG-V049-PI-MIN","REG-V049-PI-REC","REG-V049-PI-ALL"],"prohibited":true},
+    {"id":"SURFACE-V049-SUBC-SCHEMA-001","path":"crates/aft/src/subc_tool_schemas.json","kind":"generated subc manifest schema","owner":"subc-schema-generation","profiles":[],"prohibited":true}
+  ],
+  "excluded_historical_surfaces": [
+    {"path":"docs/v0.49-unified-tool-surface-spec.md","class":"normative_spec","reason":"The checked specification names retired spellings to define compatibility and audit scope."},
+    {"path":"docs/v0.49-unified-tool-surface-inventory.json","class":"normative_inventory","reason":"The S0 inventory records canonical/legacy pairs and baseline spellings as contract data."}
+  ]
+}

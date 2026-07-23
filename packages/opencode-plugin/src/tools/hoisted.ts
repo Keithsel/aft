@@ -287,10 +287,10 @@ Behavior:
 - Directories return sorted entries with trailing / for subdirectories
 
 Examples:
-  Read full file: { "filePath": "src/app.ts" }
-  Read lines 50-100: { "filePath": "src/app.ts", "startLine": 50, "endLine": 100 }
-  Read 30 lines from line 200: { "filePath": "src/app.ts", "offset": 200, "limit": 30 }
-  List directory: { "filePath": "src/" }
+  Read full file: { "path": "src/app.ts" }
+  Read lines 50-100: { "path": "src/app.ts", "startLine": 50, "endLine": 100 }
+  Read 30 lines from line 200: { "path": "src/app.ts", "offset": 200, "limit": 30 }
+  List directory: { "path": "src/" }
 `;
 
 /**
@@ -301,7 +301,7 @@ export function createReadTool(ctx: PluginContext): ToolDefinition {
     read: {
       description: READ_DESCRIPTION,
       args: {
-        filePath: z
+        path: z
           .string()
           .describe("Path to file or directory (absolute or relative to project root)"),
         startLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
@@ -318,7 +318,7 @@ export function createReadTool(ctx: PluginContext): ToolDefinition {
         ),
       },
       execute: async (args, context): Promise<ToolResult> => {
-        const file = (args.path ?? args.filePath) as string;
+        const file = args.path as string;
         const projectRoot = await resolveProjectRoot(ctx, context);
 
         // Resolve relative paths from the same session/project root used by the bridge.
@@ -438,13 +438,11 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
   return {
     description: getWriteDescription(ctx, editToolName),
     args: {
-      filePath: z
-        .string()
-        .describe("Path to the file to write (absolute or relative to project root)"),
+      path: z.string().describe("Path to the file to write (absolute or relative to project root)"),
       content: z.string().describe("The full content to write to the file"),
     },
     execute: async (args, context): Promise<ToolResult> => {
-      const file = (args.path ?? args.filePath) as string;
+      const file = args.path as string;
       const content = args.content as string;
       const projectRoot = await resolveProjectRoot(ctx, context);
 
@@ -545,40 +543,33 @@ function getEditDescription(ctx: PluginContext, writeToolName: string): string {
 
 **Modes** (determined by which parameters you provide):
 
-Provide exactly one mode per call: appendContent, edits[], symbol replace, or oldString/newString (find/replace). Mixing modes or providing none is rejected — there is no implicit "write" fallback. To edit multiple files, make parallel \`edit\` calls in one response.
+Provide exactly one mode per call: appendContent, edits[], or symbol plus content. Mixing modes or providing none is rejected — there is no implicit "write" fallback. To edit multiple files, make parallel \`edit\` calls in one response.
 
-1. **Append** — pass \`filePath\` + \`appendContent\`
-   Appends text to the end of a file, creating the file if it does not exist.
-   Example: \`{ "filePath": "notes.txt", "appendContent": "new line\\n" }\`
+1. **Append** — pass \`path\` + \`appendContent\`
+   Appends text to the end of a file, creating it if it does not exist.
+   Example: \`{ "path": "notes.txt", "appendContent": "new line\\n" }\`
 
-2. **Batch edits** — pass \`filePath\` + \`edits\` array
+2. **Batch edits** — pass \`path\` + \`edits\` array
    Multiple edits in one file atomically. Each edit is either:
    - \`{ "oldString": "old", "newString": "new" }\` — find/replace
    - \`{ "oldString": "old", "newString": "new", "replaceAll": true }\` — replace every match
    - \`{ "startLine": 5, "endLine": 7, "content": "new lines" }\` — replace line range (1-based, both inclusive)
    Set content to empty string to delete lines.
 
-3. **Symbol replace** — pass \`filePath\` + \`symbol\` + \`content\`
-   Replaces an entire named symbol (function, class, type) with new content.
+3. **Symbol replace** — pass \`path\` + \`symbol\` + \`content\`
+   Replaces an entire named symbol (function, class, type).
    Includes decorators, attributes, and doc comments in the replacement range.
-   **Important:** You must NOT provide \`oldString\` when using symbol mode — if present, the tool silently falls back to find/replace mode.
-   Example: \`{ "filePath": "src/app.ts", "symbol": "handleRequest", "content": "function handleRequest() { ... }" }\`
+   Example: \`{ "path": "src/app.ts", "symbol": "handleRequest", "content": "function handleRequest() { ... }" }\`
 
-4. **Find and replace** — pass \`filePath\` + \`oldString\` + \`newString\`
+4. **Find and replace** — put \`oldString\` and optional \`newString\` in an item of \`edits[]\`
    Finds the exact text in \`oldString\` and replaces it with \`newString\`.
    Supports fuzzy matching (handles whitespace differences automatically).
-   If multiple matches exist, specify which one with \`occurrence\` or use \`replaceAll: true\`.
-   Example: \`{ "filePath": "src/app.ts", "oldString": "const x = 1", "newString": "const x = 2" }\`
+   If multiple matches exist, specify \`occurrence\` or set \`replaceAll: true\` in that item.
 
-5. **Replace all occurrences** — add \`replaceAll: true\`
-   Replaces every occurrence of \`oldString\` in the file.
-   Example: \`{ "filePath": "src/app.ts", "oldString": "oldName", "newString": "newName", "replaceAll": true }\`
+5. **Replace all occurrences** — add \`replaceAll: true\` to a find/replace item.
 
-6. **Select specific occurrence** — add \`occurrence: N\` (1-based)
+6. **Select specific occurrence** — add \`occurrence: N\` to a find/replace item (1-based).
    When multiple matches exist, select the Nth one (1 = first, 2 = second, etc.).
-   Example: \`{ "filePath": "src/app.ts", "oldString": "TODO", "newString": "DONE", "occurrence": 1 }\`
-
-Note: Modes 5 and 6 are options on mode 4 (find/replace) — they require \`oldString\`.
 
 **Behavior:**
 ${backupBehavior}
@@ -592,21 +583,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
   return {
     description: getEditDescription(ctx, writeToolName),
     args: {
-      filePath: z
-        .string()
-        .optional()
-        .describe("Path to the file to edit (absolute or relative to project root)"),
-      oldString: z.string().optional().describe("Text to find (exact match, with fuzzy fallback)"),
-      newString: z
-        .string()
-        .optional()
-        .describe("Text to replace with (omit or set to empty string to delete the matched text)"),
-      replaceAll: z.boolean().optional().describe("Replace all occurrences"),
-      // min stays 0 so occurrence: 0 reaches the boundary normalizer's clear
-      // 1-based rejection instead of being dropped by the empty-param sentinel.
-      occurrence: optionalInt(0, Number.MAX_SAFE_INTEGER).describe(
-        "1-based occurrence to replace when multiple matches exist (1 = first match)",
-      ),
+      path: z.string().describe("Path to the file to edit (absolute or relative to project root)"),
       symbol: z.string().optional().describe("Named symbol to replace (function, class, type)"),
       content: z
         .string()
@@ -617,7 +594,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
       appendContent: z
         .string()
         .optional()
-        .describe("Text to append to the end of filePath; creates the file if needed"),
+        .describe("Text to append to the end of path; creates the file if needed"),
       edits: z
         .array(
           z.object({
@@ -630,7 +607,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
               .boolean()
               .optional()
               .describe("Replace every occurrence for this batch item"),
-            occurrence: optionalInt(0, Number.MAX_SAFE_INTEGER).describe(
+            occurrence: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
               "1-based occurrence for this batch item (1 = first match)",
             ),
             startLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
@@ -642,9 +619,10 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
             content: z.string().optional().describe("Replacement text for a batch line-range edit"),
           }),
         )
+        .min(1)
         .optional()
         .describe(
-          "Batch edits — array of { oldString, newString }, { oldString, newString, replaceAll: true }, or { startLine, endLine, content } objects",
+          "Batch edits — non-empty array of { oldString, newString }, { oldString, newString, replaceAll: true }, or { startLine, endLine, content } objects",
         ),
     },
     execute: async (args, context): Promise<ToolResult> => {
@@ -659,11 +637,11 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
           "edit: 'startLine'/'endLine' are not top-level parameters. " +
             "For line-range edits, nest them inside the `edits` array: " +
             '`edits: [{ startLine: N, endLine: M, content: "..." }]`. ' +
-            "For find/replace, use `oldString`/`newString` instead.",
+            "For find/replace, use an item in `edits[]` instead.",
         );
       }
 
-      const file = (args.path ?? args.filePath) as string;
+      const file = args.path as string;
       if (!file) throw new Error("'path' parameter is required");
       const projectRoot = await resolveProjectRoot(ctx, context);
 
@@ -1000,19 +978,14 @@ function createMoveTool(ctx: PluginContext): ToolDefinition {
   return {
     description: moveDescription(ctx),
     args: {
-      filePath: z
-        .string()
-        .describe("Source file path to move (absolute or relative to project root)"),
+      path: z.string().describe("Source file path to move (absolute or relative to project root)"),
       destination: z
         .string()
         .describe("Destination file path (absolute or relative to project root)"),
     },
     execute: async (args, context): Promise<string> => {
       const projectRoot = await resolveProjectRoot(ctx, context);
-      const filePath = resolvePathFromProjectRoot(
-        projectRoot,
-        (args.path ?? args.filePath) as string,
-      );
+      const filePath = resolvePathFromProjectRoot(projectRoot, args.path as string);
       const destPath = resolvePathFromProjectRoot(projectRoot, args.destination as string);
 
       // External-directory check first (mirrors opencode-native edit.ts:68).
@@ -1037,7 +1010,7 @@ function createMoveTool(ctx: PluginContext): ToolDefinition {
       );
 
       const result = await callToolCall(ctx, context, "move", {
-        filePath: (args.path ?? args.filePath) as string,
+        filePath: args.path as string,
         destination: args.destination as string,
       });
       if (result.success === false) {

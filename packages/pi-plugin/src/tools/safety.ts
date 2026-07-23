@@ -40,15 +40,10 @@ const SafetyParams = Type.Object({
   op: StringEnum(["undo", "history", "checkpoint", "restore", "list"] as const, {
     description: "Safety operation",
   }),
-  filePath: Type.Optional(
+  path: Type.Optional(
     Type.String({
       description:
         "File path (required for history, optional for undo). Absolute or relative to project root.",
-    }),
-  ),
-  path: Type.Optional(
-    Type.String({
-      description: "Alias for `filePath` — provide one of the two.",
     }),
   ),
   name: Type.Optional(
@@ -150,7 +145,7 @@ export function renderSafetyCall(
   theme: Theme,
   context: RenderContextLike,
 ) {
-  const target = args.path ?? args.filePath ?? args.name;
+  const target = args.path ?? args.name;
   const summary = [theme.fg("accent", args.op), target ? accentPath(theme, target) : undefined]
     .filter(Boolean)
     .join(" ");
@@ -177,7 +172,7 @@ export function registerSafetyTool(pi: ExtensionAPI, ctx: PluginContext): void {
       name: "aft_safety",
       label: "safety",
       description:
-        "File safety and recovery operations. Ops: `undo` (omit filePath to undo the entire last tool call; pass filePath to pop latest snapshot for one file — irreversible), `history` (list snapshots for a file), `checkpoint` (save named snapshot), `restore` (restore named checkpoint), `list` (list checkpoints). Per-file undo stack is capped at 20.",
+        "File safety and recovery operations. Ops: `undo` (omit path to undo the entire last tool call; pass path to pop latest snapshot for one file — irreversible), `history` (list snapshots for a file), `checkpoint` (save named snapshot), `restore` (restore named checkpoint), `list` (list checkpoints). Per-file undo stack is capped at 20.",
       parameters: SafetyParams,
       async execute(
         _toolCallId: string,
@@ -187,9 +182,7 @@ export function registerSafetyTool(pi: ExtensionAPI, ctx: PluginContext): void {
         extCtx,
       ) {
         if (params.op === "history" && !params.path) {
-          throw new Error(
-            `op='${params.op}' requires 'path'; requires 'filePath' as the legacy alias`,
-          );
+          throw new Error(`op='${params.op}' requires 'path'`);
         }
         if ((params.op === "checkpoint" || params.op === "restore") && !params.name) {
           throw new Error(`op='${params.op}' requires 'name'`);

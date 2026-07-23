@@ -37,9 +37,9 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
         "- 'impact': What breaks if a symbol changes — affected callers with signatures and entry-point status (blast radius). Use before a risky edit.\n" +
         "- 'call_tree': What a function calls (forward traversal). Use to understand a function's dependencies before modifying it.\n" +
         "- 'trace_to': How execution reaches a function from entry points (routes, exports, main). Use to understand context around deeply-nested code.\n" +
-        "- 'trace_to_symbol': Shortest call path from one symbol to another. Requires 'toSymbol'. If multiple targets match, the error returns candidate files; retry with 'toFile' to disambiguate.\n" +
+        "- 'trace_to_symbol': Shortest call path from one symbol to another. Requires 'toSymbol'. If multiple targets match, the error returns candidate files; retry with 'toPath' to disambiguate.\n" +
         "- 'trace_data': Follow a value through variable assignments and function parameters across files. Requires 'symbol' (scope to trace from) and 'expression'.\n\n" +
-        "All ops require both 'filePath' and 'symbol'. 'expression' is additionally required for trace_data; 'toSymbol' for trace_to_symbol.\n\n" +
+        "All ops require both 'path' and 'symbol'. 'expression' is additionally required for trace_data; 'toSymbol' for trace_to_symbol.\n\n" +
         "Markers: ~ = edge resolved by name only (may point at the wrong same-named symbol); [unresolved] = callee not resolved to a definition, so the location shown is the call site. Unmarked edges are resolved exactly. By default, unresolved external/stdlib leaf calls in call_tree are collapsed into one summary per parent; pass includeUnresolved=true to show every unresolved edge individually.\n",
       // Parameters are Zod-optional because different ops need different subsets.
       // Runtime guards below validate per-op requirements and give clear errors.
@@ -47,7 +47,7 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
         op: z
           .enum(["call_tree", "callers", "trace_to", "trace_to_symbol", "impact", "trace_data"])
           .describe("Navigation operation"),
-        filePath: z
+        path: z
           .string()
           .describe(
             "Path to the source file containing the symbol (absolute or relative to project root)",
@@ -66,7 +66,7 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
           .describe(
             "Target symbol name for trace_to_symbol; the returned path ends at this symbol",
           ),
-        toFile: z
+        toPath: z
           .string()
           .optional()
           .describe(
@@ -84,7 +84,7 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
           ),
       },
       execute: async (args, context): Promise<string> => {
-        if (isEmptyParam(args.path ?? args.filePath)) {
+        if (isEmptyParam(args.path)) {
           throw new Error("'path' is required");
         }
         if (isEmptyParam(args.symbol)) {
@@ -97,9 +97,9 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
           throw new Error("'toSymbol' is required for 'trace_to_symbol' op");
         }
 
-        const filePath = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
-        const toFile = !isEmptyParam(args.toPath ?? args.toFile)
-          ? await resolvePathArg(ctx, context, (args.toPath ?? args.toFile) as string)
+        const filePath = await resolvePathArg(ctx, context, args.path as string);
+        const toFile = !isEmptyParam(args.toPath)
+          ? await resolvePathArg(ctx, context, args.toPath as string)
           : undefined;
 
         const checked = new Set<string>();
@@ -112,14 +112,14 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
 
         const rawArgs: Record<string, unknown> = {
           op: args.op,
-          filePath: args.path ?? args.filePath,
+          filePath: args.path,
           symbol: args.symbol,
         };
         const depth = coerceOptionalInt(args.depth, "depth", 1, Number.MAX_SAFE_INTEGER);
         if (depth !== undefined) rawArgs.depth = depth;
         if (!isEmptyParam(args.expression)) rawArgs.expression = args.expression;
         if (!isEmptyParam(args.toSymbol)) rawArgs.toSymbol = args.toSymbol;
-        if (!isEmptyParam(args.toPath ?? args.toFile)) rawArgs.toFile = args.toPath ?? args.toFile;
+        if (!isEmptyParam(args.toPath)) rawArgs.toFile = args.toPath;
         if (!isEmptyParam(args.includeTests))
           rawArgs.includeTests = coerceBoolean(args.includeTests);
         if (!isEmptyParam(args.includeUnresolved))

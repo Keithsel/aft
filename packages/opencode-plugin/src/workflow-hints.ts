@@ -95,7 +95,7 @@ export function buildWorkflowHints(opts: WorkflowHintsOpts): string | null {
         `**Code exploration**: ${locate} Then \`aft_outline\` for structure → \`aft_zoom\` for symbol(s). DO NOT run \`grep\`/\`rg\`/\`find\`/\`sed\`/\`cat\` through \`bash\` to locate or read code — the bash path is unindexed, unranked, serial, and routinely surfaces the wrong hit. Keep \`bash\` for shell facts (git state, file metadata, processes). Reflex translations:`,
         `- \`grep -rn "handleAuth" src/\` in bash → \`${searchName}({ query: "handleAuth" })\``,
         `- \`find . -name "*.ts" | xargs grep watcher\` in bash → \`${searchName}({ query: "watcher invalidation" })\` (concepts work too)`,
-        `- \`sed -n '100,160p' app.ts\` / \`cat app.ts\` in bash → \`${readName}({ filePath: "app.ts", startLine: 100, endLine: 160 })\``,
+        `- \`sed -n '100,160p' app.ts\` / \`cat app.ts\` in bash → \`${readName}({ path: "app.ts", startLine: 100, endLine: 160 })\``,
       ].join("\n"),
     );
   }

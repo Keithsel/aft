@@ -56,22 +56,12 @@ const OutlineParams = Type.Object({
 });
 
 const ZoomTarget = Type.Object({
-  filePath: Type.Optional(
-    Type.String({ description: "Path to file (absolute or project-relative)" }),
-  ),
-  path: Type.Optional(
-    Type.String({ description: "Alias for `filePath` — provide one of the two." }),
-  ),
+  path: Type.String({ description: "Path to file (absolute or project-relative)" }),
   symbol: Type.String({ description: "Symbol name in that file" }),
 });
 
 const ZoomParams = Type.Object({
-  filePath: Type.Optional(
-    Type.String({ description: "Path to file (absolute or project-relative)" }),
-  ),
-  path: Type.Optional(
-    Type.String({ description: "Alias for `filePath` — provide one of the two." }),
-  ),
+  path: Type.Optional(Type.String({ description: "Path to file (absolute or project-relative)" })),
   url: Type.Optional(
     Type.String({
       description: "HTTP/HTTPS URL of an HTML or Markdown document to fetch and zoom into",

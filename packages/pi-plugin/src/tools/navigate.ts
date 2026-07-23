@@ -47,16 +47,9 @@ function navigateParamsSchema() {
         description: "Navigation operation",
       },
     ),
-    filePath: Type.Optional(
-      Type.String({
-        description: "Source file containing the symbol (absolute or relative to project root)",
-      }),
-    ),
-    path: Type.Optional(
-      Type.String({
-        description: "Alias for `filePath` — provide one of the two.",
-      }),
-    ),
+    path: Type.String({
+      description: "Source file containing the symbol (absolute or relative to project root)",
+    }),
     symbol: Type.String({ description: "Name of the symbol to analyze" }),
     depth: optionalInt(1, Number.MAX_SAFE_INTEGER, "Maximum call-graph depth to traverse"),
     expression: Type.Optional(
@@ -65,12 +58,6 @@ function navigateParamsSchema() {
     toSymbol: Type.Optional(
       Type.String({
         description: "Target symbol for trace_to_symbol; the returned path ends here",
-      }),
-    ),
-    toFile: Type.Optional(
-      Type.String({
-        description:
-          "Optional target file for trace_to_symbol; required when toSymbol exists in multiple files",
       }),
     ),
     toPath: Type.Optional(
@@ -142,7 +129,7 @@ export function registerNavigateTool(pi: ExtensionAPI, ctx: PluginContext): void
       name: "aft_callgraph",
       label: "callgraph",
       description:
-        "Answer code-relationship questions from a real call graph — instead of grep + read chains. Reach for this whenever the question is about how symbols connect. Use aft_zoom with `callgraph:true` for one-level forward calls-out while reading source; use aft_callgraph only for reverse callers or multi-level traces so you do not double-fetch the same relationships. All ops require both `filePath` and `symbol`. Use `callers` for call sites (before renaming/signature changes), `impact` for blast radius (what breaks if a symbol changes), `call_tree` for what a function calls, `trace_to` for how execution reaches a symbol from entry points, `trace_to_symbol` for the shortest path from one symbol to another (requires `toSymbol`; if ambiguous, the error returns candidate files — retry with `toPath`), `trace_data` to follow a value across assignments/params. Markers: ~ = edge resolved by name only (may point at the wrong same-named symbol); [unresolved] = callee not resolved to a definition, so the location shown is the call site. Unmarked edges are resolved exactly. By default, unresolved external/stdlib leaf calls in call_tree are collapsed into one summary per parent; pass includeUnresolved=true to show every unresolved edge individually.",
+        "Answer code-relationship questions from a real call graph — instead of grep + read chains. Reach for this whenever the question is about how symbols connect. Use aft_zoom with `callgraph:true` for one-level forward calls-out while reading source; use aft_callgraph only for reverse callers or multi-level traces so you do not double-fetch the same relationships. All ops require both `path` and `symbol`. Use `callers` for call sites (before renaming/signature changes), `impact` for blast radius (what breaks if a symbol changes), `call_tree` for what a function calls, `trace_to` for how execution reaches a symbol from entry points, `trace_to_symbol` for the shortest path from one symbol to another (requires `toSymbol`; if ambiguous, the error returns candidate files — retry with `toPath`), `trace_data` to follow a value across assignments/params. Markers: ~ = edge resolved by name only (may point at the wrong same-named symbol); [unresolved] = callee not resolved to a definition, so the location shown is the call site. Unmarked edges are resolved exactly. By default, unresolved external/stdlib leaf calls in call_tree are collapsed into one summary per parent; pass includeUnresolved=true to show every unresolved edge individually.",
       parameters: navigateParamsSchema(),
       async execute(_toolCallId: string, params: NavigateArgs, _signal, _onUpdate, extCtx) {
         if (isEmptyParam(params.path)) {

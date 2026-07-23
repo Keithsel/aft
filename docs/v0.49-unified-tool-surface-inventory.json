@@ -26,6 +26,9 @@
     "fixtures": "TBL-V049-CONTRACT-FIXTURES-001",
     "distribution_artifacts": "MAN-V049-DISTRIBUTION-ARTIFACTS-001",
     "legacy_allowlist": "LIST-V049-LEGACY-VOCABULARY-001",
+    "agent_surface_manifest": "ART-V049-S5-AGENT-SURFACE-MANIFEST-001",
+    "agent_prefix_capture": "ART-V049-S5-AGENT-PREFIX-CAPTURE-001",
+    "source_inventory": "ART-V049-S5-SOURCE-INVENTORY-001",
     "host_only_allowlist": "LIST-V049-HOST-ONLY-TOOLS-001"
   },
   "checked_sources": [
@@ -479,6 +482,20 @@
       {"id": "DIST-V049-PLAT-005", "package": "@cortexkit/aft-win32-arm64", "version": "0.49.0"},
       {"id": "DIST-V049-PLAT-006", "package": "@cortexkit/aft-win32-x64", "version": "0.49.0"}
     ]
+  },
+  "s5_publication_artifacts": {
+    "source_inventory": "docs/v0.49-agent-surface-sources.json",
+    "legacy_allowlist": "docs/v0.49-legacy-vocabulary-allowlist.json",
+    "agent_surface_manifest": "docs/v0.49-agent-surface-manifest.json",
+    "agent_prefix_capture": "docs/v0.49-agent-prefix-capture.json",
+    "audit_harness": "scripts/audit-v049-agent-surface.ts",
+    "stable_artifact_ids": {
+      "source_inventory": "ART-V049-S5-SOURCE-INVENTORY-001",
+      "legacy_allowlist": "LIST-V049-LEGACY-VOCABULARY-001",
+      "agent_surface_manifest": "ART-V049-S5-AGENT-SURFACE-MANIFEST-001",
+      "agent_prefix_capture": "ART-V049-S5-AGENT-PREFIX-CAPTURE-001"
+    },
+    "hash_rule": "Hash exact generated or published UTF-8 bytes without newline conversion, JSON reserialization, or test-only normalization."
   },
   "cross_section_references": [
     {"id": "REF-V049-001", "from": "interfaces.canonical_path_property_rule", "to": "INV-V049-CANONICAL-PATH-001"},

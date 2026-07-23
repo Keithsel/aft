@@ -33,16 +33,9 @@ import {
 
 const RefactorParams = Type.Object({
   op: StringEnum(["move", "extract", "inline"] as const, { description: "Refactoring operation" }),
-  filePath: Type.Optional(
-    Type.String({
-      description: "Source file (absolute or relative to project root)",
-    }),
-  ),
-  path: Type.Optional(
-    Type.String({
-      description: "Alias for `filePath` — provide one of the two.",
-    }),
-  ),
+  path: Type.String({
+    description: "Source file (absolute or relative to project root)",
+  }),
   symbol: Type.Optional(Type.String({ description: "Symbol name (for move, inline)" })),
   destination: Type.Optional(Type.String({ description: "Target file (for move)" })),
   scope: Type.Optional(Type.String({ description: "Disambiguation scope for move op" })),
@@ -78,7 +71,7 @@ export function buildRefactorSections(
   if (args.op === "extract") {
     return [
       `${theme.fg("success", "extracted")} ${theme.fg("toolOutput", asString(response.name) ?? args.name ?? "(function)")}`,
-      `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? args.filePath ?? ""))}`,
+      `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? ""))}`,
       `${theme.fg("muted", "params")} ${Array.isArray(response.parameters) ? response.parameters.join(", ") || "none" : "none"}`,
       `${theme.fg("muted", "return type")} ${asString(response.return_type) ?? "unknown"}`,
     ];
@@ -86,7 +79,7 @@ export function buildRefactorSections(
 
   return [
     `${theme.fg("success", "inlined")} ${theme.fg("toolOutput", asString(response.symbol) ?? args.symbol ?? "(symbol)")}`,
-    `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? args.filePath ?? ""))}`,
+    `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? ""))}`,
     `${theme.fg("muted", "context")} ${asString(response.call_context) ?? "unknown"}`,
     `${theme.fg("muted", "substitutions")} ${asNumber(response.substitutions) ?? 0}`,
   ];
@@ -100,7 +93,7 @@ export function renderRefactorCall(
 ) {
   const summary = [
     theme.fg("accent", args.op),
-    accentPath(theme, args.path ?? args.filePath),
+    accentPath(theme, args.path),
     args.symbol ? theme.fg("toolOutput", args.symbol) : undefined,
   ]
     .filter(Boolean)

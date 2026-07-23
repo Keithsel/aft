@@ -14,31 +14,26 @@ import { assertExternalDirectoryPermission, permissionDeniedResponse } from "./p
 
 const z = tool.schema;
 
-/** Build a short TUI title for an `aft_zoom` invocation, based on which mode the agent used. */
 function buildZoomTitle(args: {
   path?: string;
-  filePath?: string;
   url?: string;
   symbols?: string | string[];
-  targets?:
-    | { path?: string; filePath?: string; symbol: string }
-    | Array<{ path?: string; filePath?: string; symbol: string }>;
+  targets?: { path: string; symbol: string } | Array<{ path: string; symbol: string }>;
 }): string {
-  // Use isEmptyParam so empty arrays / null / "" don't produce
-  // "0 targets across files" — let the function fall through to the
-  // filePath/url/symbols branches instead.
-  if (!isEmptyParam(args.targets)) {
-    if (Array.isArray(args.targets)) {
-      if (args.targets.length === 1 && args.targets[0]) {
-        return `${args.targets[0].path ?? args.targets[0].filePath}#${args.targets[0].symbol}`;
+  const targets = args.targets;
+  if (!isEmptyParam(targets)) {
+    if (Array.isArray(targets)) {
+      if (targets.length === 1) {
+        return `${targets[0].path}#${targets[0].symbol}`;
       }
-      return `${args.targets.length} targets across files`;
+      return `${targets.length} targets across files`;
     }
-    // biome-ignore lint/style/noNonNullAssertion: isEmptyParam guards null/undefined
-    return `${args.targets!.path ?? args.targets!.filePath}#${args.targets!.symbol}`;
+    if (targets && typeof targets === "object") {
+      return `${targets.path}#${targets.symbol}`;
+    }
   }
 
-  const path = args.path ?? args.filePath ?? args.url ?? "";
+  const path = args.path ?? args.url ?? "";
   if (typeof args.symbols === "string") return path ? `${path}#${args.symbols}` : args.symbols;
   if (Array.isArray(args.symbols) && args.symbols.length > 0) {
     if (args.symbols.length === 1) return path ? `${path}#${args.symbols[0]}` : args.symbols[0];
@@ -151,12 +146,9 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
 
     aft_zoom: {
       description:
-        "Inspect code symbols or documentation sections. For code, returns the full source of a symbol. Pass `callgraph: true` to also include call-graph annotations (calls-out / called-by within the same file). For Markdown and HTML, returns the section content under the given heading.\n\nUse exactly ONE mode: `{ filePath, symbols }`, `{ url, symbols }`, or `{ targets }`. `symbols` can be a string or array (one or many lookups in the same file/URL). Use `targets` for cross-file batches: `{ filePath, symbol }` or an array of them.",
+        "Inspect code symbols or documentation sections. For code, returns the full source of a symbol. Pass `callgraph: true` to also include call-graph annotations (calls-out / called-by within the same file). For Markdown and HTML, returns the section content under the given heading.\n\nUse exactly ONE mode: `{ path, symbols }`, `{ url, symbols }`, or `{ targets }`. `symbols` can be a string or array (one or many lookups in the same file/URL). Use `targets` for cross-file batches: `{ path, symbol }` or an array of them.",
       args: {
-        filePath: z
-          .string()
-          .optional()
-          .describe("Path to file (absolute or relative to project root)"),
+        path: z.string().optional().describe("Path to file (absolute or relative to project root)"),
         url: z
           .string()
           .optional()
@@ -170,21 +162,19 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         targets: z
           .union([
             z.object({
-              filePath: z.string().describe("Path to file (absolute or relative to project root)"),
+              path: z.string().describe("Path to file (absolute or relative to project root)"),
               symbol: z.string().describe("Symbol name in that file"),
             }),
             z.array(
               z.object({
-                filePath: z
-                  .string()
-                  .describe("Path to file (absolute or relative to project root)"),
+                path: z.string().describe("Path to file (absolute or relative to project root)"),
                 symbol: z.string().describe("Symbol name in that file"),
               }),
             ),
           ])
           .optional()
           .describe(
-            "Cross-file batch: `{ filePath, symbol }` or an array of them. Mutually exclusive with filePath/url/symbols.",
+            "Cross-file batch: `{ path, symbol }` or an array of them. Mutually exclusive with path/url/symbols.",
           ),
         contextLines: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
           "Lines of context before/after the symbol (default: 3)",
@@ -211,9 +201,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
           if (isEmptyParam(t)) return false;
           const entryEmpty = (entry: unknown): boolean => {
             if (!entry || typeof entry !== "object") return true;
-            const fp =
-              (entry as { path?: unknown; filePath?: unknown }).path ??
-              (entry as { filePath?: unknown }).filePath;
+            const fp = (entry as { path?: unknown }).path;
             const sym = (entry as { symbol?: unknown }).symbol;
             const fpEmpty = typeof fp !== "string" || fp.length === 0;
             const symEmpty = typeof sym !== "string" || sym.length === 0;
@@ -222,7 +210,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
           if (Array.isArray(t)) return !t.every(entryEmpty);
           return !entryEmpty(t);
         };
-        const hasFilePath = !isEmptyParam(args.path ?? args.filePath);
+        const hasFilePath = !isEmptyParam(args.path);
         const hasUrl = !isEmptyParam(args.url);
         const hasTargets = hasTargetsProvided(args.targets);
         const hasSymbols = !isEmptyParam(args.symbols);
@@ -268,22 +256,22 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
             throw new Error("'targets' is mutually exclusive with 'path', 'url', and 'symbols'");
           }
           const targets = Array.isArray(args.targets)
-            ? (args.targets as Array<{ path?: string; filePath?: string; symbol: string }>)
-            : ([args.targets] as Array<{ path?: string; filePath?: string; symbol: string }>);
+            ? (args.targets as Array<{ path: string; symbol: string }>)
+            : ([args.targets] as Array<{ path: string; symbol: string }>);
           if (targets.length === 0) {
             throw new Error("'targets' must be a non-empty object or array");
           }
           for (const [i, entry] of targets.entries()) {
-            const targetPath = entry?.path ?? entry?.filePath;
+            const targetPath = entry?.path;
             if (typeof targetPath !== "string" || targetPath.length === 0) {
-              throw new Error(`targets[${i}].filePath must be a non-empty string`);
+              throw new Error(`targets[${i}].path must be a non-empty string`);
             }
             if (typeof entry.symbol !== "string" || entry.symbol.length === 0) {
               throw new Error(`targets[${i}].symbol must be a non-empty string`);
             }
           }
           const resolvedTargets = await Promise.all(
-            targets.map((t) => resolvePathArg(ctx, context, (t.path ?? t.filePath) as string)),
+            targets.map((t) => resolvePathArg(ctx, context, t.path)),
           );
           const permissionDenied = await assertPathExternalPermissions(
             ctx,
@@ -294,7 +282,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
 
           const rawArgs: Record<string, unknown> = {
             targets: targets.map((target) => ({
-              filePath: target.path ?? target.filePath,
+              filePath: target.path,
               symbol: target.symbol,
             })),
           };
@@ -319,14 +307,14 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         // File mode still resolves locally before dispatch so external-directory
         // permission checks approve the same path the server will read.
         if (!hasUrl) {
-          const file = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
+          const file = await resolvePathArg(ctx, context, args.path as string);
           const permissionDenied = await assertPathExternalPermissions(ctx, context, file);
           if (permissionDenied) return permissionDeniedResponse(permissionDenied);
         }
 
         const rawArgs: Record<string, unknown> = hasUrl
           ? { url: args.url }
-          : { filePath: args.path ?? args.filePath };
+          : { filePath: args.path };
         if (hasSymbols) rawArgs.symbols = args.symbols;
         if (contextLines !== undefined) rawArgs.contextLines = contextLines;
         if (wantCallgraph) rawArgs.callgraph = true;
