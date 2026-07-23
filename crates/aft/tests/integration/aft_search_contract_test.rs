@@ -1091,7 +1091,7 @@ fn slow_query_embedding_degrades_within_budget_and_next_query_retries_fresh() {
 }
 
 #[test]
-fn explicit_hint_semantic_still_fails_cleanly_when_no_fallback_available() {
+fn legacy_semantic_hint_is_ignored_without_index() {
     let (project, _source_file, _source) = project_with_needle();
     let ctx = test_context(project.path());
     *ctx.semantic_index_status()
@@ -1103,12 +1103,15 @@ fn explicit_hint_semantic_still_fails_cleanly_when_no_fallback_available() {
         &ctx,
     ));
 
-    assert_eq!(response["success"], false);
-    assert_eq!(response["code"], "semantic_unavailable");
+    assert_eq!(response["success"], true);
+    assert!(response["text"]
+        .as_str()
+        .expect("fallback text")
+        .contains("lexical-only fallback"));
 }
 
 #[test]
-fn explicit_semantic_hint_fails_when_semantic_is_unavailable() {
+fn legacy_semantic_hint_is_ignored_with_lexical_fallback() {
     let (project, source_file, source) = project_with_needle();
     let ctx = test_context(project.path());
     install_lexical_index(&ctx, &source_file, source);
@@ -1121,8 +1124,8 @@ fn explicit_semantic_hint_fails_when_semantic_is_unavailable() {
         &ctx,
     ));
 
-    assert_eq!(response["success"], false);
-    assert_eq!(response["code"], "semantic_unavailable");
+    assert_eq!(response["success"], true);
+    assert_eq!(response["lexical_only_fallback"], true);
 }
 
 #[test]

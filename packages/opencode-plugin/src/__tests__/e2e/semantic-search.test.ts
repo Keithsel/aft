@@ -269,7 +269,7 @@ maybeDescribe("e2e semantic search tool", () => {
 
     if (!output.includes(expectedFile) && lastError) throw lastError;
     expect(output).toContain(expectedFile);
-    expect(output).toContain("handle_request");
+    expect(output).toContain("lexical match");
   }, 40_000);
 });
 

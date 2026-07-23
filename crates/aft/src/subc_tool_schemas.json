@@ -264,16 +264,6 @@
         "minimum": 1,
         "maximum": 100
       },
-      "hint": {
-        "description": "Optional routing hint. Defaults to 'auto'.",
-        "type": "string",
-        "enum": [
-          "regex",
-          "literal",
-          "semantic",
-          "auto"
-        ]
-      },
       "includeTests": {
         "description": "Include test files (*.test.*, *_test.rs, __tests__/, …) plus test-support, fixture, mock, snapshot, and corpus files. Defaults to false.",
         "type": "boolean"
@@ -286,7 +276,7 @@
     "required": [
       "query"
     ],
-    "description": "Search code with one tool: concepts, identifiers, error strings, regex, literals, and filenames are auto-routed to the right engine and returned ranked. For conceptual 'how does X work' queries, phrase a full natural-language sentence — the semantic lane is NL-aware and matches intent against docstrings and comments ('how does the ORM build and execute a query', 'where is rate limiting handled'), not just keywords. Exact names, strings, and regex stay terse ('^export', 'Cargo.lock').\n\nSet hint to 'regex', 'literal', or 'semantic' to force a lane."
+    "description": "Search code with one tool: concepts, identifiers, error strings, regex, literals, and filenames are auto-routed to the right engine and returned ranked. For conceptual 'how does X work' queries, phrase a full natural-language sentence — the semantic lane is NL-aware and matches intent against docstrings and comments ('how does the ORM build and execute a query', 'where is rate limiting handled'), not just keywords. Exact names, strings, and regex stay terse ('^export', 'Cargo.lock')."
   },
   "outline": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -110,6 +110,12 @@ describe("semanticTools", () => {
     expect(Object.keys(tools)).toEqual(["aft_search"]);
   });
 
+  test("schema does not advertise the legacy hint property", () => {
+    const { tools } = createMockSemanticHarness({}, () => ({ success: true, text: "ok" }));
+
+    expect((tools.aft_search.args as Record<string, unknown>).hint).toBeUndefined();
+  });
+
   test("returns ONLY the clean text (no structured JSON dump) and sends params", async () => {
     const sdkCtx = createMockSdkContext(projectRoot);
     const bridgeResponse = {
@@ -245,8 +251,8 @@ describe("semanticTools", () => {
     );
   });
 
-  test("asks aft_search permission for regex literal and auto hints but not semantic", async () => {
-    for (const hint of ["regex", "literal", "auto"] as const) {
+  test("asks permission for every route and ignores legacy hints", async () => {
+    for (const hint of ["regex", "literal", "semantic", "auto"] as const) {
       const ask = mockAsk();
       const sdkCtx = createMockSdkContext(projectRoot, ask);
       const { toolCallCalls, tools } = createMockSemanticHarness({}, () => ({
@@ -254,23 +260,11 @@ describe("semanticTools", () => {
         text: "ok",
       }));
 
-      await tools.aft_search.execute({ query: "TODO", hint }, sdkCtx);
+      await tools.aft_search.execute({ query: "TODO", hint } as never, sdkCtx);
 
       expect(ask).toHaveBeenCalledTimes(1);
-      expect(toolCallCalls[0].rawArgs.hint).toBe(hint);
+      expect(toolCallCalls[0].rawArgs).toEqual({ query: "TODO" });
     }
-
-    const semanticAsk = mockAsk();
-    const semanticCtx = createMockSdkContext(projectRoot, semanticAsk);
-    const { toolCallCalls, tools } = createMockSemanticHarness({}, () => ({
-      success: true,
-      text: "ok",
-    }));
-
-    await tools.aft_search.execute({ query: "auth flow", hint: "semantic" }, semanticCtx);
-
-    expect(semanticAsk).not.toHaveBeenCalled();
-    expect(toolCallCalls[0].rawArgs.hint).toBe("semantic");
   });
 
   test("permission denied returns an error envelope without bridge call", async () => {

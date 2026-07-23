@@ -75,23 +75,11 @@ pub struct HybridResult {
     pub snippet: String,
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum SearchHint {
-    Regex,
-    Literal,
-    Semantic,
-    #[default]
-    Auto,
-}
-
 #[derive(Debug, Deserialize)]
 struct SemanticSearchParams {
     query: String,
     #[serde(default = "default_top_k", alias = "topK")]
     top_k: usize,
-    #[serde(default)]
-    hint: SearchHint,
     #[serde(default, alias = "includeTests")]
     include_tests: bool,
     #[serde(default)]
@@ -236,14 +224,7 @@ pub fn handle_semantic_search(req: &RawRequest, ctx: &AppContext) -> Response {
     let mut warnings = Vec::new();
 
     let lexical_ready = search_index_ready(ctx);
-    let regex_explicit = params.hint == SearchHint::Regex;
-    let mode = choose_mode(
-        params.hint,
-        &params.query,
-        &shape,
-        lexical_ready,
-        &mut warnings,
-    );
+    let mode = choose_mode(&params.query, &shape, lexical_ready, &mut warnings);
 
     match mode {
         SearchMode::Regex | SearchMode::Literal => handle_grep_search(
@@ -253,7 +234,6 @@ pub fn handle_semantic_search(req: &RawRequest, ctx: &AppContext) -> Response {
             top_k,
             &shape,
             mode,
-            regex_explicit,
             semantic_status,
             warnings,
             &project_root,
@@ -318,8 +298,7 @@ fn handle_external_search(
         };
 
     let mut warnings = Vec::new();
-    let regex_explicit = params.hint == SearchHint::Regex;
-    let mode = choose_mode(params.hint, &params.query, &shape, true, &mut warnings);
+    let mode = choose_mode(&params.query, &shape, true, &mut warnings);
 
     match mode {
         SearchMode::Regex | SearchMode::Literal => handle_external_grep_search(
@@ -328,7 +307,6 @@ fn handle_external_search(
             top_k,
             &shape,
             mode,
-            regex_explicit,
             warnings,
             &external_root,
             params.include_tests,
@@ -365,8 +343,7 @@ fn handle_external_unindexed_fallback(
     external_root: &Path,
 ) -> Response {
     let borrow_metadata = ExternalBorrowMetadata::default();
-    let regex_explicit = params.hint == SearchHint::Regex;
-    let literal = !regex_explicit;
+    let literal = true;
     let compiled = match pattern_compile::compile(
         &params.query,
         CompileOpts {
@@ -388,7 +365,7 @@ fn handle_external_unindexed_fallback(
                 &req.id,
                 "unsupported_pattern",
                 format!(
-                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Use hint:'literal' or rewrite without {feature}."
+                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Rewrite without {feature} or use grep for explicit regex control."
                 ),
                 external_response_extras(external_root, &borrow_metadata),
             );
@@ -461,14 +438,13 @@ fn handle_external_grep_search(
     top_k: usize,
     shape: &QueryShape,
     mode: SearchMode,
-    regex_explicit: bool,
     mut warnings: Vec<String>,
     external_root: &Path,
     include_tests: bool,
     search_index: &SearchIndex,
     borrow_metadata: &ExternalBorrowMetadata,
 ) -> Response {
-    let auto_regex = mode == SearchMode::Regex && !regex_explicit;
+    let auto_regex = mode == SearchMode::Regex;
     let mut effective_mode = mode;
     let compile_literal_fallback = || -> Result<_, Response> {
         match pattern_compile::compile(
@@ -489,7 +465,7 @@ fn handle_external_grep_search(
                 &req.id,
                 "unsupported_pattern",
                 format!(
-                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Use hint:'literal' or rewrite without {feature}."
+                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Rewrite without {feature} or use grep for explicit regex control."
                 ),
                 external_response_extras(external_root, borrow_metadata),
             )),
@@ -538,7 +514,7 @@ fn handle_external_grep_search(
                     &req.id,
                     "unsupported_pattern",
                     format!(
-                        "Pattern uses regex syntax not supported by AFT's engine: {feature}. Use hint:'literal' or rewrite without {feature}."
+                        "Pattern uses regex syntax not supported by AFT's engine: {feature}. Rewrite without {feature} or use grep for explicit regex control."
                     ),
                     external_response_extras(external_root, borrow_metadata),
                 );
@@ -560,6 +536,35 @@ fn handle_external_grep_search(
     result
         .matches
         .retain(|grep_match| grep_match.file.is_file());
+
+    if result.matches.is_empty() {
+        let lexical = collect_lexical_files_from_snapshot(
+            Some(search_index.snapshot()),
+            query,
+            shape,
+            include_tests,
+            external_root,
+        );
+        let extras = external_response_extras(external_root, borrow_metadata)
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        return zero_result_escalation_response(
+            req,
+            query,
+            shape,
+            effective_mode,
+            "external",
+            warnings,
+            lexical,
+            top_k,
+            include_tests,
+            external_root,
+            &absolute_display_root(external_root),
+            None,
+            extras,
+        );
+    }
 
     let result_source = if literal { "literal" } else { "regex" };
     let result_values = result
@@ -745,6 +750,40 @@ fn handle_external_semantic_or_hybrid_search(
         results.truncate(top_k);
     }
     let more_available = fused_more_available || semantic_more_available || lexical.engine_capped;
+
+    if mode == SearchMode::Semantic
+        && shape.kind == QueryKind::NaturalLanguage
+        && results.is_empty()
+        && lexical.ready
+    {
+        let escalation_lexical = collect_lexical_files_from_snapshot(
+            Some(search_index.snapshot()),
+            &params.query,
+            &shape,
+            params.include_tests,
+            &external_root,
+        );
+        let extras = external_response_extras(&external_root, &borrow_metadata)
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        return zero_result_escalation_response(
+            req,
+            &params.query,
+            &shape,
+            mode,
+            "ready",
+            warnings,
+            escalation_lexical,
+            top_k,
+            params.include_tests,
+            &external_root,
+            &absolute_display_root(&external_root),
+            None,
+            extras,
+        );
+    }
+
     let snippets_incomplete =
         enrich_snippets_from_source_with_context(&mut results, &external_root, None);
     let display_root = absolute_display_root(&external_root);
@@ -1039,68 +1078,37 @@ fn lexical_candidates_with_generated_artifact_rank(
 }
 
 fn choose_mode(
-    hint: SearchHint,
     query: &str,
     shape: &QueryShape,
     lexical_ready: bool,
     warnings: &mut Vec<String>,
 ) -> SearchMode {
-    match hint {
-        SearchHint::Regex => {
-            if shape.kind == QueryKind::NaturalLanguage {
-                warnings.push(
-                    "hint:'regex' was provided for a natural-language-looking query; interpreting it as regex.".to_string(),
-                );
-            }
-            SearchMode::Regex
+    if shape.kind == QueryKind::Regex {
+        return SearchMode::Regex;
+    }
+    if shape.kind != QueryKind::NaturalLanguage && extracted_tokens_all_short(query, shape) {
+        warnings.push(
+            "Auto mode is using literal full-file scan for all-short exact tokens because the trigram index cannot rank tokens shorter than 3 chars.".to_string(),
+        );
+        return SearchMode::Literal;
+    }
+    if shape.kind == QueryKind::NaturalLanguage {
+        // Short NL concepts (e.g. "parse imports", "retry backoff") are
+        // frequently literal code tokens the trigram lane nails exactly.
+        // Run them as Hybrid so lexical still contributes; only longer
+        // NL phrases go pure semantic. One extra trigram lookup.
+        let word_count = query.split_whitespace().count();
+        if lexical_ready && word_count <= 2 {
+            return SearchMode::Hybrid;
         }
-        SearchHint::Literal => {
-            if literal_tokens_all_short(query) {
-                warnings.push(
-                    "Literal query with tokens shorter than 3 chars requires per-file scan; latency may be slow on large repos.".to_string(),
-                );
-            }
-            SearchMode::Literal
-        }
-        SearchHint::Semantic => {
-            if shape.kind == QueryKind::Regex {
-                warnings.push(
-                    "hint:'semantic' was provided for a regex-looking query; skipping lexical/regex matching.".to_string(),
-                );
-            }
-            SearchMode::Semantic
-        }
-        SearchHint::Auto => {
-            if shape.kind == QueryKind::Regex {
-                return SearchMode::Regex;
-            }
-            if shape.kind != QueryKind::NaturalLanguage && extracted_tokens_all_short(query, shape)
-            {
-                warnings.push(
-                    "Auto mode is using literal full-file scan for all-short exact tokens because the trigram index cannot rank tokens shorter than 3 chars.".to_string(),
-                );
-                return SearchMode::Literal;
-            }
-            if shape.kind == QueryKind::NaturalLanguage {
-                // Short NL concepts (e.g. "parse imports", "retry backoff") are
-                // frequently literal code tokens the trigram lane nails exactly.
-                // Run them as Hybrid so lexical still contributes; only longer
-                // NL phrases go pure semantic. One extra trigram lookup.
-                let word_count = query.split_whitespace().count();
-                if lexical_ready && word_count <= 2 {
-                    return SearchMode::Hybrid;
-                }
-                return SearchMode::Semantic;
-            }
-            if lexical_ready {
-                SearchMode::Hybrid
-            } else {
-                warnings.push(
-                    "Lexical trigram index is unavailable; using semantic search only.".to_string(),
-                );
-                SearchMode::Semantic
-            }
-        }
+        return SearchMode::Semantic;
+    }
+    if lexical_ready {
+        SearchMode::Hybrid
+    } else {
+        warnings
+            .push("Lexical trigram index is unavailable; using semantic search only.".to_string());
+        SearchMode::Semantic
     }
 }
 
@@ -1111,13 +1119,12 @@ fn handle_grep_search(
     top_k: usize,
     shape: &QueryShape,
     mode: SearchMode,
-    regex_explicit: bool,
     semantic_status: &'static str,
     mut warnings: Vec<String>,
     project_root: &Path,
     include_tests: bool,
 ) -> Response {
-    let auto_regex = mode == SearchMode::Regex && !regex_explicit;
+    let auto_regex = mode == SearchMode::Regex;
     let mut effective_mode = mode;
     let compile_literal_fallback = || -> Result<_, Response> {
         match pattern_compile::compile(
@@ -1138,7 +1145,7 @@ fn handle_grep_search(
                 &req.id,
                 "unsupported_pattern",
                 format!(
-                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Use hint:'literal' or rewrite without {feature}."
+                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Rewrite without {feature} or use grep for explicit regex control."
                 ),
                 serde_json::json!({"pattern": query, "feature": feature}),
             )),
@@ -1187,7 +1194,7 @@ fn handle_grep_search(
                     &req.id,
                     "unsupported_pattern",
                     format!(
-                        "Pattern uses regex syntax not supported by AFT's engine: {feature}. Use hint:'literal' or rewrite without {feature}."
+                        "Pattern uses regex syntax not supported by AFT's engine: {feature}. Rewrite without {feature} or use grep for explicit regex control."
                     ),
                     serde_json::json!({"pattern": query, "feature": feature}),
                 );
@@ -1212,6 +1219,25 @@ fn handle_grep_search(
     }
 
     let result_source = if literal { "literal" } else { "regex" };
+    if result.matches.is_empty() && search_index_ready(ctx) {
+        let lexical = collect_lexical_files(ctx, query, shape, include_tests, project_root);
+        return zero_result_escalation_response(
+            req,
+            query,
+            shape,
+            effective_mode,
+            semantic_status,
+            warnings,
+            lexical,
+            top_k,
+            include_tests,
+            project_root,
+            project_root,
+            Some(ctx),
+            serde_json::Map::new(),
+        );
+    }
+
     let result_values = result
         .matches
         .iter()
@@ -1257,7 +1283,7 @@ fn short_regex_compile_reason(message: &str) -> Cow<'_, str> {
 
 fn auto_regex_literal_fallback_warning(reason: impl AsRef<str>) -> String {
     format!(
-        "Query looked like a regex but failed to compile ({}); searched literally instead. Pass hint:\"regex\" to force regex.",
+        "Query looked like a regex but failed to compile ({}); searched literally instead. Use grep when explicit regex lane control is required.",
         reason.as_ref()
     )
 }
@@ -1358,7 +1384,7 @@ fn handle_semantic_or_hybrid_search(
                 detail.push_str(&format!(" / {}", entries_total));
             }
 
-            if natural_language_degraded_fallback_available(params.hint, mode, &shape) {
+            if natural_language_degraded_fallback_available(mode, &shape) {
                 return semantic_unavailable_grep_fallback_response(
                     req,
                     ctx,
@@ -1537,6 +1563,35 @@ fn handle_semantic_or_hybrid_search(
     }
     let more_available = fused_more_available || semantic_more_available || lexical.engine_capped;
 
+    if mode == SearchMode::Semantic
+        && shape.kind == QueryKind::NaturalLanguage
+        && results.is_empty()
+        && lexical.ready
+    {
+        let escalation_lexical = collect_lexical_files(
+            ctx,
+            &params.query,
+            &shape,
+            params.include_tests,
+            project_root,
+        );
+        return zero_result_escalation_response(
+            req,
+            &params.query,
+            &shape,
+            mode,
+            semantic_status,
+            warnings,
+            escalation_lexical,
+            top_k,
+            params.include_tests,
+            project_root,
+            project_root,
+            Some(ctx),
+            serde_json::Map::new(),
+        );
+    }
+
     // No score threshold: silent filtering produced "0 results" even when the
     // model had reasonable matches the agent could have judged. Surface every
     // hit so the caller can decide.
@@ -1593,6 +1648,91 @@ impl<'a> SearchResponseParts<'a> {
     fn result_count(&self) -> usize {
         self.results.len()
     }
+}
+
+fn zero_result_escalation_disclosure(mode: SearchMode) -> &'static str {
+    match mode {
+        SearchMode::Regex => "[interpreted_as: regex; no exact match — ranked by terms instead]",
+        SearchMode::Literal => {
+            "[interpreted_as: literal; no exact match — ranked by terms instead]"
+        }
+        SearchMode::Semantic => {
+            "[interpreted_as: semantic; no result above cutoff — ranked by terms instead]"
+        }
+        SearchMode::Hybrid => {
+            "[interpreted_as: hybrid; no result — no further escalation available]"
+        }
+    }
+}
+
+/// Render the single lexical second chance used after an auto-routed lane
+/// returns no results. Keeping this pass separate makes the one-extra-pass
+/// limit explicit and ensures zero remains an honest result when terms miss too.
+fn zero_result_escalation_response(
+    req: &RawRequest,
+    query: &str,
+    shape: &QueryShape,
+    mode: SearchMode,
+    semantic_status: &'static str,
+    warnings: Vec<String>,
+    lexical: LexicalCollection,
+    top_k: usize,
+    include_tests: bool,
+    project_root: &Path,
+    display_root: &Path,
+    ctx: Option<&AppContext>,
+    mut extras: serde_json::Map<String, serde_json::Value>,
+) -> Response {
+    let lexical_count = lexical.files.len();
+    let lexical_engine_capped = lexical.engine_capped;
+    let mut results = fuse_hybrid_results(
+        Vec::new(),
+        lexical.files,
+        shape,
+        top_k,
+        include_tests,
+        project_root,
+    );
+    if let Some(ctx) = ctx {
+        if ctx.shared_artifacts_read_only() {
+            results.retain(|result| result.file.is_file());
+        }
+    }
+    let snippets_incomplete =
+        enrich_snippets_from_source_with_context(&mut results, project_root, ctx);
+    let mut text = format_semantic_text_with_display_root(
+        &results,
+        display_root,
+        lexical_count > top_k || lexical_engine_capped,
+        snippets_incomplete,
+        ctx,
+    );
+    text.push('\n');
+    text.push_str(zero_result_escalation_disclosure(mode));
+
+    extras.insert(
+        "zero_result_escalation".to_string(),
+        serde_json::json!(true),
+    );
+    extras.insert("escalation_target".to_string(), serde_json::json!("hybrid"));
+    search_response(
+        req,
+        SearchResponseParts {
+            query,
+            interpreted_as: interpreted_as_label(mode),
+            query_kind: query_kind_label(shape.kind),
+            semantic_status,
+            status: "ready",
+            complete: true,
+            text,
+            results: results.iter().map(result_to_json).collect::<Vec<_>>(),
+            more_available: lexical_count > top_k || lexical_engine_capped,
+            engine_capped: lexical_engine_capped,
+            fully_degraded: false,
+            warnings,
+            extras,
+        },
+    )
 }
 
 fn search_response(req: &RawRequest, parts: SearchResponseParts<'_>) -> Response {
@@ -1657,10 +1797,6 @@ fn semantic_unavailable_or_fallback_response(
     project_root: &Path,
     top_k: usize,
 ) -> Response {
-    if params.hint == SearchHint::Semantic && !force_lexical_fallback {
-        return semantic_unavailable_response(&req.id, detail);
-    }
-
     let lexical_ready = (mode == SearchMode::Hybrid || force_lexical_fallback) && lexical.ready;
     if lexical_ready {
         let lexical_count = lexical.files.len();
@@ -1700,8 +1836,7 @@ fn semantic_unavailable_or_fallback_response(
         );
     }
 
-    if force_lexical_fallback || semantic_degraded_fallback_available(params, mode, shape, &lexical)
-    {
+    if force_lexical_fallback || semantic_degraded_fallback_available(mode, shape, &lexical) {
         return semantic_unavailable_grep_fallback_response(
             req,
             ctx,
@@ -1740,10 +1875,6 @@ fn semantic_unavailable_or_fallback_response(
     )
 }
 
-fn semantic_unavailable_response(request_id: &str, detail: String) -> Response {
-    Response::error(request_id, "semantic_unavailable", detail)
-}
-
 fn semantic_unavailable_extras(
     lexical_only_fallback: bool,
 ) -> serde_json::Map<String, serde_json::Value> {
@@ -1757,29 +1888,19 @@ fn semantic_unavailable_extras(
 }
 
 fn semantic_degraded_fallback_available(
-    params: &SemanticSearchParams,
     mode: SearchMode,
     shape: &QueryShape,
     lexical: &LexicalCollection,
 ) -> bool {
-    if natural_language_degraded_fallback_available(params.hint, mode, shape) {
+    if natural_language_degraded_fallback_available(mode, shape) {
         return true;
     }
 
-    params.hint != SearchHint::Semantic
-        && mode == SearchMode::Semantic
-        && !lexical.ready
-        && shape.weights.should_use_lexical
+    mode == SearchMode::Semantic && !lexical.ready && shape.weights.should_use_lexical
 }
 
-fn natural_language_degraded_fallback_available(
-    hint: SearchHint,
-    mode: SearchMode,
-    shape: &QueryShape,
-) -> bool {
-    hint != SearchHint::Semantic
-        && mode == SearchMode::Semantic
-        && shape.kind == QueryKind::NaturalLanguage
+fn natural_language_degraded_fallback_available(mode: SearchMode, shape: &QueryShape) -> bool {
+    mode == SearchMode::Semantic && shape.kind == QueryKind::NaturalLanguage
 }
 
 fn semantic_unavailable_grep_fallback_response(
@@ -1891,7 +2012,7 @@ fn execute_degraded_grep_fallback(
                 request_id,
                 "unsupported_pattern",
                 format!(
-                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Use hint:'literal' or rewrite without {feature}."
+                    "Pattern uses regex syntax not supported by AFT's engine: {feature}. Rewrite without {feature} or use grep for explicit regex control."
                 ),
                 serde_json::json!({"pattern": query, "feature": feature}),
             ));
@@ -2156,15 +2277,9 @@ fn collect_lexical_files_from_snapshot(
     // lane. The shape weight was a second, conflicting gate that suppressed
     // lexical for short NL concepts routed to Hybrid.
     //
-    // NL shapes yield no tokens from extract_tokens (their words aren't code
-    // identifiers), but a short NL concept routed to Hybrid (e.g. "parse
-    // imports") is exactly the case where the literal words should hit the
-    // trigram lane — so use the short-NL extractor there.
-    let tokens = if shape.kind == QueryKind::NaturalLanguage {
-        query_shape::extract_short_nl_lexical_tokens(query)
-    } else {
-        query_shape::extract_tokens(query, shape)
-    };
+    // Use the shared lexical token extraction, including quoted code tokens,
+    // for both the normal hybrid lane and its one-pass zero-result escalation.
+    let tokens = query_shape::extract_lexical_tokens(query, shape);
     let token_refs = tokens.iter().map(String::as_str).collect::<Vec<_>>();
     let query_trigrams = SearchIndex::query_trigrams_from_tokens(&token_refs);
 
@@ -3395,14 +3510,6 @@ fn strip_surrounding_quotes(query: String) -> String {
     query
 }
 
-fn literal_tokens_all_short(query: &str) -> bool {
-    let tokens = query
-        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
-    !tokens.is_empty() && tokens.iter().all(|token| token.len() < 3)
-}
-
 fn extracted_tokens_all_short(query: &str, shape: &QueryShape) -> bool {
     let tokens = query_shape::extract_tokens(query, shape);
     !tokens.is_empty() && tokens.iter().all(|token| token.len() < 3)
@@ -3445,6 +3552,7 @@ mod tests {
     };
     use crate::parser::TreeSitterProvider;
     use crate::semantic_index::SemanticIndex;
+    use serde_json::Value;
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::path::{Path, PathBuf};
@@ -3601,13 +3709,7 @@ mod tests {
         let shape = query_shape::classify("parse imports");
         assert_eq!(shape.kind, QueryKind::NaturalLanguage);
         let mut warnings = Vec::new();
-        let mode = choose_mode(
-            SearchHint::Auto,
-            "parse imports",
-            &shape,
-            true,
-            &mut warnings,
-        );
+        let mode = choose_mode("parse imports", &shape, true, &mut warnings);
         assert_eq!(mode, SearchMode::Hybrid);
     }
 
@@ -3619,7 +3721,7 @@ mod tests {
         let shape = query_shape::classify(q);
         assert_eq!(shape.kind, QueryKind::NaturalLanguage);
         let mut warnings = Vec::new();
-        let mode = choose_mode(SearchHint::Auto, q, &shape, true, &mut warnings);
+        let mode = choose_mode(q, &shape, true, &mut warnings);
         assert_eq!(mode, SearchMode::Semantic);
     }
 
@@ -3714,12 +3816,13 @@ mod tests {
             &ctx,
         ));
 
-        assert_eq!(response["success"], false);
-        assert_eq!(response["code"], "semantic_unavailable");
-        assert!(response["message"]
+        assert_eq!(response["success"], true);
+        assert_eq!(response["status"], "ready");
+        assert_eq!(response["semantic_status"], "building");
+        assert!(response["text"]
             .as_str()
-            .expect("semantic error message")
-            .contains("reloading"));
+            .expect("semantic fallback text")
+            .contains("lexical-only fallback"));
         assert!(ctx.semantic_index_rx().lock().is_some());
         ctx.mark_subc_unbound();
         ctx.cancel_unbound_artifact_work();
@@ -3788,11 +3891,11 @@ mod tests {
             .find(|warning| warning.contains("searched literally instead"))
             .expect("fallback warning");
         assert!(fallback_warning.contains("unclosed group"));
-        assert!(fallback_warning.contains("Pass hint:\"regex\" to force regex."));
+        assert!(fallback_warning.contains("Use grep when explicit regex lane control is required."));
     }
 
     #[test]
-    fn explicit_regex_uncompilable_query_still_errors() {
+    fn legacy_regex_hint_is_ignored_for_uncompilable_query() {
         let project = tempfile::tempdir().expect("create project dir");
         let ctx = test_context(project.path());
 
@@ -3801,8 +3904,12 @@ mod tests {
             &ctx,
         ));
 
-        assert_eq!(response["success"], false);
-        assert_eq!(response["code"], "invalid_pattern");
+        assert_eq!(response["success"], true);
+        assert_eq!(response["interpreted_as"], "literal");
+        assert!(response["text"]
+            .as_str()
+            .expect("literal fallback text")
+            .contains("Found 0"));
     }
 
     #[test]
@@ -3832,7 +3939,7 @@ mod tests {
     }
 
     #[test]
-    fn literal_hint_short_token_warns_and_runs_grep_line_results() {
+    fn auto_short_token_warns_and_runs_grep_line_results() {
         let project = tempfile::tempdir().expect("create project dir");
         let source_file = project.path().join("src/lib.rs");
         std::fs::create_dir_all(source_file.parent().expect("source parent"))
@@ -3854,7 +3961,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_regex_returns_specific_error() {
+    fn unsupported_regex_auto_falls_back_to_literal() {
         let project = tempfile::tempdir().expect("create project dir");
         let ctx = test_context(project.path());
 
@@ -3863,12 +3970,218 @@ mod tests {
             &ctx,
         ));
 
-        assert_eq!(response["success"], false);
-        assert_eq!(response["code"], "unsupported_pattern");
-        assert!(response["message"]
+        assert_eq!(response["success"], true);
+        assert_eq!(response["interpreted_as"], "literal");
+        assert!(response["warnings"]
+            .as_array()
+            .expect("warnings")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains("searched literally instead"))));
+    }
+
+    #[test]
+    fn regex_zero_results_escalate_once_to_hybrid_terms() {
+        let project = tempfile::tempdir().expect("create project dir");
+        let source_file = project.path().join("src/reminder.rs");
+        std::fs::create_dir_all(source_file.parent().expect("source parent"))
+            .expect("create source dir");
+        std::fs::write(
+            &source_file,
+            "const missing_route = true;\npub fn exported() {}\n",
+        )
+        .expect("write source file");
+        let ctx = test_context(project.path());
+        let mut index = SearchIndex::new();
+        index.index_file(
+            &source_file,
+            std::fs::read(&source_file).expect("read source").as_slice(),
+        );
+        index.ready = true;
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(index);
+        *ctx.semantic_index_status()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = SemanticIndexStatus::Disabled;
+
+        let response = response_value(handle_semantic_search(
+            &semantic_request("^missing_route$", 5),
+            &ctx,
+        ));
+        assert_eq!(response["success"], true);
+        assert_eq!(response["result_count"], 1);
+        assert_eq!(response["zero_result_escalation"], true);
+        assert!(response["results"]
+            .as_array()
+            .expect("results")
+            .iter()
+            .any(|result| result["source"] == "lexical"));
+        assert!(response["text"]
             .as_str()
-            .expect("message")
-            .contains("lookaround"));
+            .expect("text")
+            .contains("[interpreted_as: regex; no exact match — ranked by terms instead]"));
+
+        let first_project = tempfile::tempdir().expect("create first-lane project");
+        let first_source = first_project.path().join("src/lib.rs");
+        std::fs::create_dir_all(first_source.parent().expect("source parent"))
+            .expect("create source dir");
+        std::fs::write(&first_source, "pub fn exported() {}\n").expect("write source file");
+        let first_ctx = test_context(first_project.path());
+        *first_ctx
+            .semantic_index_status()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = SemanticIndexStatus::Disabled;
+        let first_lane_response = response_value(handle_semantic_search(
+            &semantic_request_with_hint(".*exported", 5, "regex"),
+            &first_ctx,
+        ));
+        assert!(
+            first_lane_response["result_count"]
+                .as_u64()
+                .is_some_and(|count| count > 0),
+            "response: {first_lane_response:?}"
+        );
+        assert_eq!(
+            first_lane_response
+                .get("zero_result_escalation")
+                .and_then(Value::as_bool),
+            None,
+            "response: {first_lane_response:?}"
+        );
+        assert!(!first_lane_response["text"]
+            .as_str()
+            .expect("text")
+            .contains("no exact match"));
+    }
+
+    #[test]
+    fn external_regex_zero_results_escalate_when_borrowed_lexical_index_is_ready() {
+        let project = tempfile::tempdir().expect("create project dir");
+        let source_file = project.path().join("src/reminder.rs");
+        std::fs::create_dir_all(source_file.parent().expect("source parent"))
+            .expect("create source dir");
+        std::fs::write(&source_file, "const missing_route = true;\n").expect("write source file");
+        let mut index = SearchIndex::new();
+        index.index_file(
+            &source_file,
+            std::fs::read(&source_file).expect("read source").as_slice(),
+        );
+        index.ready = true;
+        let query = "^missing_route$";
+        let shape = query_shape::classify(query);
+        let response = response_value(handle_external_grep_search(
+            &semantic_request(query, 5),
+            query,
+            5,
+            &shape,
+            SearchMode::Regex,
+            Vec::new(),
+            project.path(),
+            false,
+            &index,
+            &ExternalBorrowMetadata::default(),
+        ));
+
+        assert_eq!(response["success"], true);
+        assert_eq!(response["zero_result_escalation"], true);
+        assert!(response["results"]
+            .as_array()
+            .expect("results")
+            .iter()
+            .any(|result| result["file"]
+                .as_str()
+                .is_some_and(|file| file.ends_with("src/reminder.rs"))));
+        assert!(response["text"]
+            .as_str()
+            .expect("text")
+            .contains("[interpreted_as: regex; no exact match — ranked by terms instead]"));
+    }
+
+    #[test]
+    fn quoted_natural_language_zero_results_find_terms_in_one_escalation() {
+        let project = tempfile::tempdir().expect("create project dir");
+        let source_file = project.path().join("src/reminder.rs");
+        std::fs::create_dir_all(source_file.parent().expect("source parent"))
+            .expect("create source dir");
+        std::fs::write(&source_file, "const template = \"outside <touser>\";\n")
+            .expect("write source file");
+        let ctx = test_context(project.path());
+        let mut index = SearchIndex::new();
+        index.index_file(
+            &source_file,
+            std::fs::read(&source_file).expect("read source").as_slice(),
+        );
+        index.ready = true;
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(index);
+        *ctx.semantic_index_status()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = SemanticIndexStatus::ready();
+        *ctx.semantic_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(SemanticIndex::new(project.path().to_path_buf(), 3));
+        let (base_url, handle) = start_mock_embedding_server();
+        ctx.update_config(|config| {
+            config.semantic.backend = SemanticBackend::OpenAiCompatible;
+            config.semantic.base_url = Some(base_url);
+            config.semantic.model = "test-embedding".to_string();
+        });
+
+        let response = response_value(handle_semantic_search(
+            &semantic_request("\"outside <touser>\" reminder text", 5),
+            &ctx,
+        ));
+        assert_eq!(response["success"], true);
+        assert_eq!(response["zero_result_escalation"], true);
+        assert!(response["results"]
+            .as_array()
+            .expect("results")
+            .iter()
+            .any(|result| result["file"]
+                .as_str()
+                .is_some_and(|file| file.ends_with("src/reminder.rs"))));
+        assert!(response["text"].as_str().expect("text").contains(
+            "[interpreted_as: semantic; no result above cutoff — ranked by terms instead]"
+        ));
+        handle.join().expect("embedding server thread");
+    }
+
+    #[test]
+    fn garbage_regex_zero_after_escalation_is_honest_zero() {
+        let project = tempfile::tempdir().expect("create project dir");
+        let source_file = project.path().join("src/lib.rs");
+        std::fs::create_dir_all(source_file.parent().expect("source parent"))
+            .expect("create source dir");
+        std::fs::write(&source_file, "const present_route = true;\n").expect("write source file");
+        let ctx = test_context(project.path());
+        let mut index = SearchIndex::new();
+        index.index_file(
+            &source_file,
+            std::fs::read(&source_file).expect("read source").as_slice(),
+        );
+        index.ready = true;
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(index);
+        *ctx.semantic_index_status()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = SemanticIndexStatus::Disabled;
+
+        let response = response_value(handle_semantic_search(
+            &semantic_request("^qzxjvpl_888$", 5),
+            &ctx,
+        ));
+        assert_eq!(response["success"], true);
+        assert_eq!(response["result_count"], 0);
+        assert_eq!(response["zero_result_escalation"], true);
+        assert!(response["text"]
+            .as_str()
+            .expect("text")
+            .contains("[interpreted_as: regex; no exact match — ranked by terms instead]"));
     }
 
     #[test]

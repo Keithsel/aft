@@ -1817,11 +1817,6 @@ fn translate_search(args: Value) -> Result<Translated, TranslateError> {
     out.insert("query".to_string(), Value::String(query.to_string()));
     let top_k = coerce_optional_int_result(map_in.get("topK"), "topK", 1, 100)?.unwrap_or(10);
     out.insert("top_k".to_string(), Value::Number(top_k.into()));
-    if let Some(hint) = map_in.get("hint") {
-        if !is_empty_param(hint) {
-            out.insert("hint".to_string(), hint.clone());
-        }
-    }
     if let Some(include_tests) = map_in.get("includeTests").and_then(Value::as_bool) {
         out.insert("include_tests".to_string(), Value::Bool(include_tests));
     }
@@ -2372,6 +2367,31 @@ mod tests {
             .expect_err("invalid occurrence spelling");
             assert!(error.message.contains("occurrence"));
         }
+    }
+
+    #[test]
+    fn search_legacy_hint_is_accepted_and_ignored() {
+        let translated = subc_translate_owned(
+            "search",
+            serde_json::json!({
+                "query": "outside <touser>",
+                "topK": 5,
+                "hint": "literal"
+            }),
+            Path::new("/project"),
+        )
+        .expect("legacy search hint must not reject the request");
+
+        assert_eq!(translated.command, "semantic_search");
+        assert_eq!(
+            translated.args.get("query").and_then(Value::as_str),
+            Some("outside <touser>")
+        );
+        assert_eq!(
+            translated.args.get("top_k").and_then(Value::as_u64),
+            Some(5)
+        );
+        assert!(translated.args.get("hint").is_none());
     }
 
     // supports_tool() gates whether run_tool_call translates or passes a name

@@ -37,46 +37,36 @@ function semanticHonestyNote(response: Record<string, unknown>, theme: Theme): s
   return notes.length > 0 ? theme.fg("warning", `Search status: ${notes.join("; ")}.`) : undefined;
 }
 
-const SearchParams = Type.Object({
-  query: Type.String({
-    description:
-      "Concept, regex, literal text, filename, or capability to find. Examples: 'fuzzy match with whitespace tolerance', '^export', 'Cargo.lock'.",
-  }),
-  topK: Type.Optional(
-    Type.Integer({
-      minimum: 1,
-      maximum: 100,
-      default: 10,
-      description: "Maximum number of results (default: 10, max: 100)",
+const SearchParams = Type.Object(
+  {
+    query: Type.String({
+      description:
+        "Concept, regex, literal text, filename, or capability to find. Examples: 'fuzzy match with whitespace tolerance', '^export', 'Cargo.lock'.",
     }),
-  ),
-  hint: Type.Optional(
-    Type.Union(
-      [
-        Type.Literal("regex"),
-        Type.Literal("literal"),
-        Type.Literal("semantic"),
-        Type.Literal("auto"),
-      ],
-      {
-        description: "Optional routing hint. Defaults to 'auto'.",
-      },
+    topK: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: 100,
+        default: 10,
+        description: "Maximum number of results (default: 10, max: 100)",
+      }),
     ),
-  ),
-  includeTests: Type.Optional(
-    Type.Boolean({
-      default: false,
-      description:
-        "Include test files (*.test.*, *_test.rs, __tests__/, …) plus test-support, fixture, mock, snapshot, and corpus files. Defaults to false.",
-    }),
-  ),
-  path: Type.Optional(
-    Type.String({
-      description:
-        "Search a different project root (absolute or ~ path). Requires that project to have been indexed by AFT.",
-    }),
-  ),
-});
+    includeTests: Type.Optional(
+      Type.Boolean({
+        default: false,
+        description:
+          "Include test files (*.test.*, *_test.rs, __tests__/, …) plus test-support, fixture, mock, snapshot, and corpus files. Defaults to false.",
+      }),
+    ),
+    path: Type.Optional(
+      Type.String({
+        description:
+          "Search a different project root (absolute or ~ path). Requires that project to have been indexed by AFT.",
+      }),
+    ),
+  },
+  { additionalProperties: true },
+);
 
 /** Exported for renderer unit tests. */
 export function buildSemanticSections(
@@ -206,8 +196,6 @@ export function registerSemanticTool(pi: ExtensionAPI, ctx: PluginContext): void
       // the exact bash-grep reflex the system prompt works to suppress.
       description: [
         "Search code with one tool: concepts, identifiers, error strings, regex, literals, and filenames are auto-routed to the right engine and returned ranked. For conceptual 'how does X work' queries, phrase a full natural-language sentence — the semantic lane is NL-aware and matches intent against docstrings and comments ('how does the ORM build and execute a query', 'where is rate limiting handled'), not just keywords. Exact names, strings, and regex stay terse ('^export', 'Cargo.lock').",
-        "",
-        "Set hint to 'regex', 'literal', or 'semantic' to force a lane.",
       ].join("\n"),
       parameters: SearchParams,
       async execute(
@@ -228,7 +216,6 @@ export function registerSemanticTool(pi: ExtensionAPI, ctx: PluginContext): void
         const bridge = bridgeFor(ctx, extCtx.cwd);
         const req: Record<string, unknown> = { query: params.query };
         if (params.topK !== undefined) req.topK = params.topK;
-        if (params.hint !== undefined) req.hint = params.hint;
         if (params.includeTests !== undefined) req.includeTests = params.includeTests;
         if (params.path !== undefined) req.path = params.path;
         const response = await callToolCall(bridge, "search", req, extCtx);
