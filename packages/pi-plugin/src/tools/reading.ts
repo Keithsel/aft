@@ -17,6 +17,7 @@ import {
   callToolCall,
   coerceOptionalInt,
   isEmptyParam,
+  optionalInt,
   textResult,
   withPathAliasPreparation,
 } from "./_shared.js";
@@ -88,8 +89,10 @@ const ZoomParams = Type.Object({
         "Cross-file batch: `{ path, symbol }` or an array of them. Mutually exclusive with path/url/symbols.",
     }),
   ),
-  contextLines: Type.Optional(
-    Type.Number({ description: "Lines of context before/after (default: 3)" }),
+  contextLines: optionalInt(
+    1,
+    Number.MAX_SAFE_INTEGER,
+    "Lines of context before/after (default: 3)",
   ),
   callgraph: Type.Optional(
     Type.Boolean({

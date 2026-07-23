@@ -52,7 +52,7 @@ import {
 } from "./lsp-github-install.js";
 import { GITHUB_LSP_TABLE } from "./lsp-github-table.js";
 import { NPM_LSP_TABLE } from "./lsp-npm-table.js";
-import { normalizeToolMap, prepareOpenCodeArguments } from "./normalize-schemas.js";
+import { prepareOpenCodeArguments } from "./normalize-schemas.js";
 import {
   cleanupWarnings,
   type NotificationOptions,
@@ -79,22 +79,9 @@ import { registerShutdownCleanup, runCleanups } from "./shutdown-hooks.js";
 import { clearStatusBarSession, statusBarSuffixForSession } from "./status-bar-inject.js";
 import { signalSyncWatchAbort } from "./sync-watch-abort.js";
 import { instrumentToolMap } from "./tool-perf.js";
-import { astTools } from "./tools/ast.js";
+import { buildOpenCodeToolMap } from "./tool-registration.js";
 import { bashToolDescription } from "./tools/bash.js";
-import { conflictTools } from "./tools/conflicts.js";
-import { aftPrefixedTools, hoistedTools } from "./tools/hoisted.js";
-import { importTools } from "./tools/imports.js";
-import {
-  createInspectTier2IdleScheduler,
-  inspectToolSurfaceEnabled,
-  inspectTools,
-} from "./tools/inspect.js";
-import { navigationTools } from "./tools/navigation.js";
-import { readingTools } from "./tools/reading.js";
-import { refactoringTools } from "./tools/refactoring.js";
-import { safetyTools } from "./tools/safety.js";
-import { searchTools } from "./tools/search.js";
-import { semanticTools } from "./tools/semantic.js";
+import { createInspectTier2IdleScheduler } from "./tools/inspect.js";
 import type { PluginContext } from "./types.js";
 import { buildHintsFromConfig } from "./workflow-hints.js";
 
@@ -987,59 +974,14 @@ async function initializePluginForDirectory(input: Parameters<Plugin>[0]) {
     cleanupWarnings(notifyOpts).catch(() => {});
   }
 
-  // Tool surface tiers:
-  //   minimal:     aft_outline, aft_zoom, aft_safety
-  //   recommended: minimal + hoisted + ast_grep_* + aft_import (default)
-  //   all:         recommended + aft_callgraph, aft_delete, aft_move, aft_refactor
-  const surface = aftConfig.tool_surface ?? "recommended";
-
-  // Tools only available in "all" tier
-  const ALL_ONLY_TOOLS = new Set(["aft_callgraph", "aft_delete", "aft_move", "aft_refactor"]);
-
-  // Build full tool map
-  const allTools = normalizeToolMap({
-    // Hoisted tools: only in recommended+ (and when hoist_builtin_tools !== false)
-    ...(surface !== "minimal" &&
-      (aftConfig.hoist_builtin_tools !== false ? hoistedTools(ctx) : aftPrefixedTools(ctx))),
-    ...readingTools(ctx),
-
-    ...(aftConfig.backup?.enabled === false ? {} : safetyTools(ctx)),
-    // aft_import: recommended+
-    ...(surface !== "minimal" && importTools(ctx)),
-    ...navigationTools(ctx),
-    // AST tools: recommended+
-    ...(surface !== "minimal" && astTools(ctx)),
-    ...(surface !== "minimal" && aftConfig.semantic_search === true && semanticTools(ctx)),
-    ...(inspectToolSurfaceEnabled(aftConfig) && inspectTools(ctx)),
-    // Indexed search tools: recommended+ and opt-in
-    ...(surface !== "minimal" && aftConfig.search_index === true && searchTools(ctx)),
-    ...refactoringTools(ctx),
-    // Git conflicts: recommended+
-    ...(surface !== "minimal" && conflictTools(ctx)),
+  // Build the exact tool map for the configured profile. The builder contains
+  // only registration work; startup, transport, and lifecycle hooks stay here.
+  const allTools = buildOpenCodeToolMap(ctx, aftConfig, (name, available) => {
+    warn(`disabled_tools: "${name}" not found — available: ${available.join(", ")}`);
   });
-
-  // Remove all-only tools when surface is minimal or recommended
-  if (surface !== "all") {
-    for (const name of ALL_ONLY_TOOLS) {
-      if (name in allTools) {
-        delete allTools[name];
-      }
-    }
-  }
-
-  // Filter disabled tools (user + project config union)
-  const disabled = new Set(aftConfig.disabled_tools ?? []);
-  if (disabled.size > 0) {
-    for (const name of disabled) {
-      if (name in allTools) {
-        delete allTools[name];
-      } else {
-        warn(
-          `disabled_tools: "${name}" not found — available: ${Object.keys(allTools).join(", ")}`,
-        );
-      }
-    }
-    log(`Disabled ${disabled.size} tool(s): ${[...disabled].join(", ")}`);
+  const disabled = aftConfig.disabled_tools ?? [];
+  if (disabled.length > 0) {
+    log(`Disabled ${disabled.length} tool(s): ${disabled.join(", ")}`);
   }
 
   // Wrap every tool's execute() with latency instrumentation: one log line per

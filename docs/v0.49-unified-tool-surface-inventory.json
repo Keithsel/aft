@@ -303,10 +303,20 @@
         "parity_role": "full shared parity profile"
       }
     ],
+    "checked_expected_sets": {
+      "REG-V049-OC-MIN": ["aft_outline", "aft_safety", "aft_zoom"],
+      "REG-V049-OC-REC": ["aft_conflicts", "aft_import", "aft_inspect", "aft_outline", "aft_safety", "aft_search", "aft_zoom", "apply_patch", "ast_grep_replace", "ast_grep_search", "bash", "bash_kill", "bash_status", "bash_watch", "bash_write", "edit", "glob", "grep", "read", "write"],
+      "REG-V049-OC-ALL": ["aft_callgraph", "aft_conflicts", "aft_delete", "aft_import", "aft_inspect", "aft_move", "aft_outline", "aft_refactor", "aft_safety", "aft_search", "aft_zoom", "apply_patch", "ast_grep_replace", "ast_grep_search", "bash", "bash_kill", "bash_status", "bash_watch", "bash_write", "edit", "glob", "grep", "read", "write"],
+      "REG-V049-PI-MIN": ["aft_outline", "aft_safety", "aft_zoom"],
+      "REG-V049-PI-REC": ["aft_conflicts", "aft_import", "aft_inspect", "aft_outline", "aft_safety", "aft_search", "aft_zoom", "ast_grep_replace", "ast_grep_search", "bash", "bash_kill", "bash_status", "bash_watch", "bash_write", "edit", "grep", "read", "write"],
+      "REG-V049-PI-ALL": ["aft_callgraph", "aft_conflicts", "aft_delete", "aft_import", "aft_inspect", "aft_move", "aft_outline", "aft_refactor", "aft_safety", "aft_search", "aft_zoom", "ast_grep_replace", "ast_grep_search", "bash", "bash_kill", "bash_status", "bash_watch", "bash_write", "edit", "grep", "read", "write"]
+    },
     "host_only_allowlist": [
       {"id": "HOSTONLY-V049-001", "harness": "subc", "tool": "status", "reason": "manifest health probe is not an agent-registered tool", "owning_test": "scripts/capture-subc-parity.ts"},
       {"id": "HOSTONLY-V049-002", "harness": "opencode", "tool": "aft_bash", "reason": "only used when built-in bash hoisting is disabled", "owning_test": "packages/opencode-plugin/src/__tests__/tool-surface-transport-invariant.test.ts"},
-      {"id": "HOSTONLY-V049-003", "harness": "opencode", "tool": "aft_read/aft_write/aft_edit/aft_apply_patch", "reason": "prefixed fallback when built-in hoisting is disabled", "owning_test": "packages/opencode-plugin/src/__tests__/tool-surface-transport-invariant.test.ts"}
+      {"id": "HOSTONLY-V049-003", "harness": "opencode", "tool": "aft_read/aft_write/aft_edit/aft_apply_patch", "reason": "prefixed fallback when built-in hoisting is disabled", "owning_test": "packages/opencode-plugin/src/__tests__/tool-surface-transport-invariant.test.ts"},
+      {"id": "HOSTONLY-V049-004", "harness": "opencode", "tool": "apply_patch", "reason": "OpenCode replaces a built-in tool that Pi does not expose on its agent surface", "owning_test": "packages/opencode-plugin/src/__tests__/registration-parity.test.ts"},
+      {"id": "HOSTONLY-V049-005", "harness": "opencode", "tool": "glob", "reason": "OpenCode's indexed search branch has no paired Pi registration", "owning_test": "packages/opencode-plugin/src/__tests__/registration-parity.test.ts"}
     ]
   },
   "shared_tool_inventory": {
@@ -318,9 +328,7 @@
       {"id": "SHARED-V049-002", "bare": "read", "opencode": "read", "pi": "read", "subc": "read"},
       {"id": "SHARED-V049-003", "bare": "write", "opencode": "write", "pi": "write", "subc": "write"},
       {"id": "SHARED-V049-004", "bare": "edit", "opencode": "edit", "pi": "edit", "subc": "edit"},
-      {"id": "SHARED-V049-005", "bare": "apply_patch", "opencode": "apply_patch", "pi": "apply_patch", "subc": "apply_patch"},
       {"id": "SHARED-V049-006", "bare": "grep", "opencode": "grep", "pi": "grep", "subc": "grep"},
-      {"id": "SHARED-V049-007", "bare": "glob", "opencode": "glob", "pi": "glob", "subc": "glob"},
       {"id": "SHARED-V049-008", "bare": "search", "opencode": "aft_search", "pi": "aft_search", "subc": "search"},
       {"id": "SHARED-V049-009", "bare": "outline", "opencode": "aft_outline", "pi": "aft_outline", "subc": "outline"},
       {"id": "SHARED-V049-010", "bare": "zoom", "opencode": "aft_zoom", "pi": "aft_zoom", "subc": "zoom"},

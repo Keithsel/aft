@@ -13,7 +13,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "typebox";
 import type { PluginContext } from "../types.js";
-import { bridgeFor, callToolCall, isEmptyParam, textResult } from "./_shared.js";
+import { bridgeFor, callToolCall, isEmptyParam, optionalInt, textResult } from "./_shared.js";
 import { assertExternalDirectoryPermission, resolvePathArg } from "./hoisted.js";
 import {
   asNumber,
@@ -51,8 +51,10 @@ const SearchParams = Type.Object({
   globs: Type.Optional(
     Type.Array(Type.String(), { description: "Include/exclude globs (prefix `!` to exclude)" }),
   ),
-  contextLines: Type.Optional(
-    Type.Number({ description: "Number of context lines around each match" }),
+  contextLines: optionalInt(
+    1,
+    Number.MAX_SAFE_INTEGER,
+    "Number of context lines around each match",
   ),
 });
 

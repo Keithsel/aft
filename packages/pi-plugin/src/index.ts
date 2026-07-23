@@ -60,7 +60,6 @@ import {
   getConfigLoadErrors,
   loadAftConfig,
   migrateAftConfigLocations,
-  resolveBashConfig,
   resolveBridgePoolTransportOptions,
 } from "./config.js";
 import { bridgeLogger, error, log, warn } from "./logger.js";
@@ -89,19 +88,8 @@ setActiveLogger(bridgeLogger);
 import { signalBashWaitDetachForProject } from "./bash-wait-detach.js";
 import { registerShutdownCleanup } from "./shutdown-hooks.js";
 import { signalSyncWatchAbort } from "./sync-watch-abort.js";
+import { registerPiToolSurface, resolvePiToolSurface } from "./tool-registration.js";
 import { resolveSessionId } from "./tools/_shared.js";
-import { registerAstTools } from "./tools/ast.js";
-import { registerBashTool } from "./tools/bash.js";
-import { registerConflictsTool } from "./tools/conflicts.js";
-import { registerFsTools } from "./tools/fs.js";
-import { registerHoistedTools } from "./tools/hoisted.js";
-import { registerImportTools } from "./tools/imports.js";
-import { registerInspectTool } from "./tools/inspect.js";
-import { registerNavigateTool } from "./tools/navigate.js";
-import { registerReadingTools } from "./tools/reading.js";
-import { registerRefactorTool } from "./tools/refactor.js";
-import { registerSafetyTool } from "./tools/safety.js";
-import { registerSemanticTool } from "./tools/semantic.js";
 import type { PluginContext } from "./types.js";
 import { registerWorkflowHints } from "./workflow-hints.js";
 
@@ -209,8 +197,6 @@ const ANNOUNCEMENT_FEATURES: string[] = [
  * Leave empty (`""`) to suppress.
  */
 const ANNOUNCEMENT_FOOTER = "Join us on Discord: https://discord.gg/DSa65w8wuf";
-
-const ALL_ONLY_TOOLS = new Set(["aft_callgraph", "aft_delete", "aft_move", "aft_refactor"]);
 
 const pendingEagerWarnings = new Map<string, ConfigureWarning[]>();
 
@@ -336,106 +322,6 @@ async function handleConfigureWarningsForSession(context: {
     },
     combinedWarnings,
   );
-}
-
-/**
- * Tool surface mirrors opencode-plugin: navigate/delete/move/transform/refactor
- * are all-only. recommended exposes hoisted + read/safety/import/ast/lsp/conflicts
- * + experimental search/semantic when enabled.
- *
- * Returns the set of AFT tool names that should be registered given the
- * configured surface + disabled_tools filter. Pi's built-in tools are always
- * present; registering an AFT tool with the same name replaces them.
- */
-function resolveToolSurface(config: ReturnType<typeof loadAftConfig>): {
-  hoistBash: boolean;
-  hoistRead: boolean;
-  hoistWrite: boolean;
-  hoistEdit: boolean;
-  hoistGrep: boolean;
-  restrictToProjectRoot: boolean;
-  outline: boolean;
-  zoom: boolean;
-  semantic: boolean;
-  inspect: boolean;
-  navigate: boolean;
-  conflicts: boolean;
-  importTool: boolean;
-  safety: boolean;
-  delete: boolean;
-  move: boolean;
-  astSearch: boolean;
-  astReplace: boolean;
-  refactor: boolean;
-} {
-  const surface = config.tool_surface ?? "recommended";
-  const disabled = new Set(config.disabled_tools ?? []);
-  const ok = (name: string): boolean => !disabled.has(name);
-  const allOnly = (name: string): boolean => ALL_ONLY_TOOLS.has(name) && ok(name);
-  // Mirrors the Pi-side default in `configureOverrides` below: false means
-  // "no plugin-side restriction; let Rust accept any path." Threaded into
-  // ToolSurfaceFlags so hoisted tools can suppress the external_directory
-  // prompt that Pi has no host-level allow-list to back.
-  const restrictToProjectRoot = config.restrict_to_project_root ?? false;
-
-  if (surface === "minimal") {
-    return {
-      hoistBash: ok("bash"),
-      hoistRead: false,
-      hoistWrite: false,
-      hoistEdit: false,
-      hoistGrep: false,
-      restrictToProjectRoot,
-      outline: ok("aft_outline"),
-      zoom: ok("aft_zoom"),
-      semantic: false,
-      inspect: false,
-      navigate: false,
-      conflicts: false,
-      importTool: false,
-      safety: ok("aft_safety"),
-      delete: false,
-      move: false,
-      astSearch: false,
-      astReplace: false,
-      refactor: false,
-    };
-  }
-
-  // recommended + all
-  const base = {
-    hoistBash: ok("bash"),
-    hoistRead: ok("read"),
-    hoistWrite: ok("write"),
-    hoistEdit: ok("edit"),
-    hoistGrep: ok("grep") && config.search_index === true,
-    restrictToProjectRoot,
-    outline: ok("aft_outline"),
-    zoom: ok("aft_zoom"),
-    semantic: ok("aft_search") && config.semantic_search === true,
-    inspect: ok("aft_inspect") && config.inspect?.enabled !== false,
-    navigate: false,
-    conflicts: ok("aft_conflicts"),
-    importTool: ok("aft_import"),
-    safety: ok("aft_safety"),
-    delete: false,
-    move: false,
-    astSearch: ok("ast_grep_search"),
-    astReplace: ok("ast_grep_replace"),
-    refactor: false,
-  };
-
-  if (surface === "all") {
-    return {
-      ...base,
-      navigate: allOnly("aft_callgraph"),
-      delete: allOnly("aft_delete"),
-      move: allOnly("aft_move"),
-      refactor: allOnly("aft_refactor"),
-    };
-  }
-
-  return base;
 }
 
 /**
@@ -742,7 +628,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   // warmup spawn below so even the first bridge configures with the flag.
   // `resolveToolSurface` is pure; `.semantic` is the same predicate the tool
   // registration uses (ok("aft_search") && semantic_search === true).
-  pool.setConfigureOverride("aft_search_registered", resolveToolSurface(config).semantic);
+  pool.setConfigureOverride("aft_search_registered", resolvePiToolSurface(config).semantic);
   const ctx: PluginContext = { pool, config, storageDir };
 
   // Settle the ONNX runtime download promise (started above) and patch the
@@ -843,51 +729,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
     );
   }
 
-  const surface = resolveToolSurface(config);
+  const surface = resolvePiToolSurface(config);
 
-  // Hoisted tool overrides (replace Pi's built-in bash/read/write/edit/grep with AFT versions).
-  // Bash hoisting is gated by the single resolved bash config — see
-  // `resolveBashConfig` in config.ts for the precedence rules. When
-  // `surface.hoistBash` is false (e.g. `tool_surface: "minimal"`), AFT bash
-  // never registers regardless of resolved config. registerBashTool registers
-  // `bash` whenever enabled and gates the background control tools on
-  // `bash.background`.
-  if (surface.hoistBash && resolveBashConfig(config).enabled) {
-    registerBashTool(pi, ctx, surface.semantic);
-  }
-  registerHoistedTools(pi, ctx, surface);
-
-  // AFT-specific tools
-  if (surface.outline || surface.zoom) {
-    registerReadingTools(pi, ctx, surface);
-  }
-  if (surface.semantic) {
-    registerSemanticTool(pi, ctx);
-  }
-  if (surface.inspect) {
-    registerInspectTool(pi, ctx);
-  }
-  if (surface.navigate) {
-    registerNavigateTool(pi, ctx);
-  }
-  if (surface.conflicts) {
-    registerConflictsTool(pi, ctx);
-  }
-  if (surface.importTool) {
-    registerImportTools(pi, ctx);
-  }
-  if (surface.safety && config.backup?.enabled !== false) {
-    registerSafetyTool(pi, ctx);
-  }
-  if (surface.astSearch || surface.astReplace) {
-    registerAstTools(pi, ctx, surface);
-  }
-  if (surface.delete || surface.move) {
-    registerFsTools(pi, ctx, surface);
-  }
-  if (surface.refactor) {
-    registerRefactorTool(pi, ctx);
-  }
+  registerPiToolSurface(pi, ctx, surface);
 
   // Workflow hints: short system-prompt block teaching token-efficient
   // AFT workflows. Hooked into Pi's `before_agent_start` event with
@@ -1016,7 +860,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 export const __test__ = {
   enqueueConfigParseWarnings,
   bridgeDirectoryFromCallback,
-  resolveToolSurface,
+  resolveToolSurface: resolvePiToolSurface,
   handleConfigureWarningsForSession,
   shouldPrepareOnnxRuntime,
   createVersionMismatchHandler,

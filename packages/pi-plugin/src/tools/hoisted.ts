@@ -247,12 +247,14 @@ const ReadParams = Type.Object({
       description: "Alias for `path` — provide one of the two.",
     }),
   ),
+  startLine: optionalInt(1, Number.MAX_SAFE_INTEGER, "1-based line to start reading from"),
+  endLine: optionalInt(1, Number.MAX_SAFE_INTEGER, "1-based line to stop reading at (inclusive)"),
+  limit: optionalInt(1, Number.MAX_SAFE_INTEGER, "Maximum number of lines to return"),
   offset: optionalInt(
     1,
     Number.MAX_SAFE_INTEGER,
     "1-based line number to start reading from (use with limit)",
   ),
-  limit: optionalInt(1, Number.MAX_SAFE_INTEGER, "Maximum number of lines to return"),
 });
 
 const WriteParams = Type.Object({
@@ -312,6 +314,15 @@ const EditParams = Type.Object({
     Type.String({ description: "Text to find (exact match, fuzzy fallback)" }),
   ),
   newString: Type.Optional(Type.String({ description: "Replacement text (omit to delete match)" })),
+  symbol: Type.Optional(
+    Type.String({ description: "Named symbol to replace (function, class, type)" }),
+  ),
+  content: Type.Optional(
+    Type.String({
+      description:
+        "Replacement content for symbol mode. For whole-file writes, use the `write` tool.",
+    }),
+  ),
   replaceAll: Type.Optional(Type.Boolean({ description: "Replace every occurrence" })),
   // min stays 0 so occurrence: 0 reaches the boundary normalizer's clear
   // 1-based rejection instead of being dropped by the empty-param sentinel.
@@ -344,7 +355,6 @@ const GrepParams = Type.Object({
   include: Type.Optional(
     Type.String({ description: "Glob filter for included files (e.g. '*.ts,*.tsx')" }),
   ),
-  caseSensitive: Type.Optional(Type.Boolean({ description: "Case-sensitive matching" })),
 });
 
 export interface ToolSurfaceFlags {
@@ -511,6 +521,13 @@ export function registerHoistedTools(
           if (typeof pathArg !== "string") {
             throw new Error("read: missing required parameter `path`");
           }
+          const startLine = coerceOptionalInt(
+            params.startLine,
+            "startLine",
+            1,
+            Number.MAX_SAFE_INTEGER,
+          );
+          const endLine = coerceOptionalInt(params.endLine, "endLine", 1, Number.MAX_SAFE_INTEGER);
           const offset = coerceOptionalInt(params.offset, "offset", 1, Number.MAX_SAFE_INTEGER);
           const limit = coerceOptionalInt(params.limit, "limit", 1, Number.MAX_SAFE_INTEGER);
           // Resolve ~ / relative once and use the same value for the permission
@@ -522,6 +539,8 @@ export function registerHoistedTools(
             serverValidatedRead: true,
           });
           const rawArgs: Record<string, unknown> = { filePath: pathArg };
+          if (startLine !== undefined) rawArgs.startLine = startLine;
+          if (endLine !== undefined) rawArgs.endLine = endLine;
           if (offset !== undefined) rawArgs.offset = offset;
           if (limit !== undefined) rawArgs.limit = limit;
           const response = await callToolCall(bridge, "read", rawArgs, extCtx);
@@ -716,7 +735,6 @@ export function registerHoistedTools(
             req.path = await bridgeSearchPathArg(extCtx.cwd, pathSplit);
           }
           if (params.include) req.include = params.include;
-          if (params.caseSensitive !== undefined) req.caseSensitive = params.caseSensitive;
 
           const response = await callToolCall(bridge, "grep", req, extCtx);
           if (response.success === false) {
