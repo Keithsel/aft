@@ -1061,7 +1061,7 @@ describe("Hoisted tool execute handlers", () => {
     expect(calls[0]).toMatchObject({
       command: "edit",
       params: {
-        filePath: "batch.ts",
+        path: "batch.ts",
         edits: [
           { oldString: "before", newString: "after", replaceAll: true },
           { startLine: 4, endLine: 6, content: "replacement" },
@@ -1072,7 +1072,7 @@ describe("Hoisted tool execute handlers", () => {
     expect(calls[1]).toEqual({
       command: "edit",
       params: {
-        filePath: "batch.ts",
+        path: "batch.ts",
         edits: [
           { oldString: "before", newString: "after", replaceAll: true },
           { startLine: 4, endLine: 6, content: "replacement" },
@@ -1081,16 +1081,16 @@ describe("Hoisted tool execute handlers", () => {
     });
   });
 
-  test('legacy aft_edit mode:"write" throws the Rust error response', async () => {
+  test('legacy aft_edit mode:"write" form is retired with a steering error', async () => {
     tmpDir = await makeTempDir();
     sdkCtx = createMockSdkContext(tmpDir);
 
+    // The retired mode/file form must never reach the bridge: the boundary
+    // rejects it with steering toward the canonical surface.
     const pool = {
       getBridge: () => ({
-        send: async (command: string, params: Record<string, unknown>) => {
-          expect(command).toBe("write");
-          expect(params.diagnostics).toBe(false);
-          return { success: false, message: "legacy write refused" };
+        send: async () => {
+          throw new Error("bridge must not be called for the retired form");
         },
       }),
     } as unknown as BridgePool;
@@ -1101,7 +1101,7 @@ describe("Hoisted tool execute handlers", () => {
         { mode: "write", file: "legacy.ts", content: "export const x = 1;\n" },
         sdkCtx,
       ),
-    ).rejects.toThrow("legacy write refused");
+    ).rejects.toThrow(/retired `mode`\/`file` edit form/);
   });
 
   test("edit forwards replaceAll to Rust for multiple occurrences", async () => {
@@ -1127,25 +1127,23 @@ describe("Hoisted tool execute handlers", () => {
     );
 
     // replaceAll with 3 replacements -> count surfaced; no diff -> +0/-0.
+    // The top-level single-edit form folds into a one-item edits[] at the
+    // boundary before the wire call.
     expect(result).toBe("Edited (+0/-0, 3 replacements).");
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({
       command: "edit",
       params: {
-        filePath: "repeated.ts",
-        oldString: "oldName",
-        newString: "newName",
-        replaceAll: true,
+        path: "repeated.ts",
+        edits: [{ oldString: "oldName", newString: "newName", replaceAll: true }],
       },
       options: { preview: true },
     });
     expect(calls[1]).toEqual({
       command: "edit",
       params: {
-        filePath: "repeated.ts",
-        oldString: "oldName",
-        newString: "newName",
-        replaceAll: true,
+        path: "repeated.ts",
+        edits: [{ oldString: "oldName", newString: "newName", replaceAll: true }],
       },
     });
   });
@@ -1171,10 +1169,12 @@ describe("Hoisted tool execute handlers", () => {
     );
 
     const applyCall = calls.find((c) => c.command === "edit" && !isPreviewCall(c));
-    expect(applyCall?.params.replaceAll).toBe(true);
+    const foldedEdits = applyCall?.params.edits as Array<Record<string, unknown>>;
+    expect(foldedEdits).toHaveLength(1);
+    expect(foldedEdits[0].replaceAll).toBe(true);
   });
 
-  test('edit coerces string occurrence "0" and keeps the first occurrence selectable', async () => {
+  test('edit rejects occurrence "0" and coerces string occurrence "1" (1-based)', async () => {
     tmpDir = await makeTempDir();
     sdkCtx = createMockSdkContext(tmpDir);
 
@@ -1184,18 +1184,34 @@ describe("Hoisted tool execute handlers", () => {
         : { success: true, replacements: 1, text: "Edited (+0/-0)." },
     );
 
+    // occurrence is 1-based: 0 is rejected at the boundary before any wire call.
+    await expect(
+      tools.edit.execute(
+        {
+          filePath: "repeated.ts",
+          oldString: "oldName",
+          newString: "newName",
+          occurrence: "0" as unknown as number,
+        },
+        sdkCtx,
+      ),
+    ).rejects.toThrow(/positive integer/);
+    expect(calls.filter((c) => c.command === "edit")).toHaveLength(0);
+
+    // A stringified "1" coerces to the first occurrence and folds into edits[].
     await tools.edit.execute(
       {
         filePath: "repeated.ts",
         oldString: "oldName",
         newString: "newName",
-        occurrence: "0" as unknown as number,
+        occurrence: "1" as unknown as number,
       },
       sdkCtx,
     );
 
     const applyCall = calls.find((c) => c.command === "edit" && !isPreviewCall(c));
-    expect(applyCall?.params.occurrence).toBe(0);
+    const foldedEdits = applyCall?.params.edits as Array<Record<string, unknown>>;
+    expect(foldedEdits[0].occurrence).toBe(1);
   });
 
   /// Diff-payload contract: the server returns full before/after for UI
