@@ -192,11 +192,11 @@ const PLUGIN_VERSION: string = (() => {
  * dismisses an announcement, patch releases that don't bump ANNOUNCEMENT_VERSION
  * will not re-show it.
  */
-const ANNOUNCEMENT_VERSION = "0.48.0";
+const ANNOUNCEMENT_VERSION = "0.49.0";
 const ANNOUNCEMENT_FEATURES: string[] = [
-  "New (beta, off by default): an optional native sandbox for hoisted bash. Confines commands to your project and blocks reads of your credentials (~/.ssh, ~/.aws, cloud configs). Enable with sandbox.enabled in aft.jsonc — macOS and Linux; see docs/config.md for the platform matrix.",
-  "Fixed: Windows background bash tasks could report failed with no exit code after a detach/rebind — completion is now recorded reliably.",
-  "Fixed: search no longer rebuilds its index unnecessarily for repositories with grafted history.",
+  "One unified tool surface: every tool now takes `path` (old spellings keep working), `edit` has one calling shape, and `occurrence` is 1-based. Fewer ways for models to get a call wrong; prompt caches re-warm once after this upgrade.",
+  "aft_search now routes queries itself — the hint parameter is gone, and searches that find no exact match are re-ranked by their terms instead of returning nothing.",
+  "Corporate and custom certificate authorities now work: HTTPS requests verify through the OS trust store (Keychain, Windows certificate store, SSL_CERT_FILE on Linux).",
 ];
 
 /**
