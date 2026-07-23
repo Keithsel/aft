@@ -1147,6 +1147,27 @@ fn translate_edit(
     }
 
     if let Some(edits) = map_in.get("edits").and_then(Value::as_array) {
+        // The batch command is single-file only; glob targets are an
+        // edit_match capability. A glob path with one find/replace item
+        // (the folded single-edit form included) must keep routing to
+        // edit_match or glob edits silently break with "file not found".
+        if path_is_glob_pattern(file_path) {
+            if let [single] = edits.as_slice() {
+                if let Some(obj) = single.as_object() {
+                    let is_find_replace = obj.contains_key("oldString")
+                        && !obj.contains_key("startLine")
+                        && !obj.contains_key("endLine");
+                    if is_find_replace {
+                        return translate_single_edit_match(obj, file_str, ctx);
+                    }
+                }
+            }
+            return Err(invalid_request(
+                "edit: glob targets support exactly one find/replace edit \
+                 (oldString/newString); line-range and multi-item batches \
+                 need a concrete file path",
+            ));
+        }
         let mut out = Map::new();
         out.insert("file".to_string(), Value::String(file_str));
         let translated_edits: Vec<Value> = edits
@@ -1199,44 +1220,57 @@ fn translate_edit(
     }
 
     if old_string_is_string {
-        let mut out = Map::new();
-        out.insert("file".to_string(), Value::String(file_str));
-        out.insert(
-            "match".to_string(),
-            Value::String(
-                map_in
-                    .get("oldString")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-            ),
-        );
-        let replacement = map_in
-            .get("newString")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        out.insert(
-            "replacement".to_string(),
-            Value::String(replacement.to_string()),
-        );
-        if let Some(v) = map_in.get("replaceAll") {
-            out.insert("replace_all".to_string(), v.clone());
-        }
-        if map_in.contains_key("occurrence") {
-            if let Some(v) = map_in.get("occurrence") {
-                out.insert("occurrence".to_string(), v.clone());
-            }
-        }
-        insert_common_mutation_flags(&mut out, ctx);
-        return Ok(Translated {
-            command: "edit_match".into(),
-            args: out,
-        });
+        return translate_single_edit_match(&map_in, file_str, ctx);
     }
 
     Err(invalid_request(
         "edit: no edit mode resolved from arguments.",
     ))
+}
+
+/// A glob spelling in an edit target (single-file batch is the alternative).
+fn path_is_glob_pattern(path: &str) -> bool {
+    path.contains('*') || path.contains('?') || path.contains('{') || path.contains('[')
+}
+
+/// Route one find/replace edit to the `edit_match` command, which owns both
+/// concrete-file and glob targets.
+fn translate_single_edit_match(
+    fields: &Map<String, Value>,
+    file_str: String,
+    ctx: TranslateContext,
+) -> Result<Translated, TranslateError> {
+    let mut out = Map::new();
+    out.insert("file".to_string(), Value::String(file_str));
+    out.insert(
+        "match".to_string(),
+        Value::String(
+            fields
+                .get("oldString")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        ),
+    );
+    let replacement = fields
+        .get("newString")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    out.insert(
+        "replacement".to_string(),
+        Value::String(replacement.to_string()),
+    );
+    if let Some(v) = fields.get("replaceAll") {
+        out.insert("replace_all".to_string(), v.clone());
+    }
+    if let Some(v) = fields.get("occurrence") {
+        out.insert("occurrence".to_string(), v.clone());
+    }
+    insert_common_mutation_flags(&mut out, ctx);
+    Ok(Translated {
+        command: "edit_match".into(),
+        args: out,
+    })
 }
 
 fn translate_apply_patch(args: Value) -> Result<Translated, TranslateError> {

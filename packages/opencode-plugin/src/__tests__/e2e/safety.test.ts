@@ -75,7 +75,7 @@ export function runSafetySuite(
         filePath,
         oldString: "pending",
         newString: "ready",
-        occurrence: 0,
+        occurrence: 1,
       });
       const undo = await agentCall(h, "safety", { op: "undo", filePath });
 

@@ -144,7 +144,7 @@ export function runCallgraphToolcallSuite(
 
       await expect(
         tools.aft_callgraph.execute({ op: "callers", filePath: "", symbol: "normalize" }, context),
-      ).rejects.toThrow("'filePath' is required");
+      ).rejects.toThrow("'filePath' must be a non-empty well-formed Unicode string");
 
       await expect(
         tools.aft_callgraph.execute(
