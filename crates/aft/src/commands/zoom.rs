@@ -451,6 +451,27 @@ fn is_heading_zoom_language(lang: Option<LangId>) -> bool {
     matches!(lang, Some(LangId::Markdown | LangId::Html))
 }
 
+/// Parse a JSON-stringified array of symbol names (`"[\"A\", \"B\"]"`).
+///
+/// Returns `None` unless the string is a well-formed JSON array whose elements
+/// are all strings, so ordinary symbol text (including bracketed code like
+/// `[derive]` or heading text starting with `[`) is never misparsed.
+fn parse_stringified_symbol_array(raw: &str) -> Option<Vec<String>> {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return None;
+    }
+    let values: Vec<serde_json::Value> = serde_json::from_str(trimmed).ok()?;
+    let mut names = Vec::with_capacity(values.len());
+    for value in values {
+        let name = value.as_str()?.trim();
+        if !name.is_empty() {
+            names.push(name.to_string());
+        }
+    }
+    Some(names)
+}
+
 /// Normalize `symbol` / `symbols` into one or more lookup names.
 ///
 /// For code files, a single string containing internal whitespace is split on `\s+`.
@@ -472,6 +493,14 @@ fn parse_zoom_symbol_names(
     let Some(raw) = zoom_symbol_param(params) else {
         return Ok(Vec::new());
     };
+
+    // Some models JSON-stringify the array form ("[\"A\", \"B\"]"). Absorb it
+    // instead of treating the serialized text as one symbol name; without this
+    // the lookup fails with a not-found whose suggestions are the very names
+    // the caller sent.
+    if let Some(names) = parse_stringified_symbol_array(raw) {
+        return Ok(names);
+    }
 
     if is_heading_zoom_language(lang) {
         let trimmed = raw.trim();
@@ -1447,6 +1476,40 @@ mod tests {
         let params = serde_json::json!({ "symbols": ["A", "B", "C"] });
         let names = parse_zoom_symbol_names(&params, Some(LangId::Rust)).expect("parse");
         assert_eq!(names, vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn parse_zoom_symbol_names_absorbs_stringified_array_for_headings() {
+        // Models sometimes JSON-stringify the array form; headings keep spaces.
+        let params =
+            serde_json::json!({ "symbols": "[\"2. Identity material\", \"3. Enrollment\"]" });
+        let names = parse_zoom_symbol_names(&params, Some(LangId::Markdown)).expect("parse");
+        assert_eq!(names, vec!["2. Identity material", "3. Enrollment"]);
+    }
+
+    #[test]
+    fn parse_zoom_symbol_names_absorbs_stringified_array_for_code() {
+        let params = serde_json::json!({ "symbol": "[\"alpha\", \"beta\"]" });
+        let names = parse_zoom_symbol_names(&params, Some(LangId::Rust)).expect("parse");
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn parse_zoom_symbol_names_bracketed_heading_not_misparsed() {
+        // A real heading that starts with '[' but is not a JSON array must
+        // stay a single lookup name.
+        let params = serde_json::json!({ "symbols": "[Draft] Rollout plan" });
+        let names = parse_zoom_symbol_names(&params, Some(LangId::Markdown)).expect("parse");
+        assert_eq!(names, vec!["[Draft] Rollout plan"]);
+    }
+
+    #[test]
+    fn parse_zoom_symbol_names_non_string_json_array_not_absorbed() {
+        // "[1, 2]" parses as JSON but not as symbol names; fall through to
+        // ordinary handling rather than returning numbers-as-names.
+        let params = serde_json::json!({ "symbols": "[1, 2]" });
+        let names = parse_zoom_symbol_names(&params, Some(LangId::Rust)).expect("parse");
+        assert_eq!(names, vec!["[1,", "2]"]);
     }
 
     // --- Call extraction tests ---
