@@ -14,6 +14,7 @@ import {
   isEmptyParam,
   optionalInt,
   textResult,
+  withPathAliasPreparation,
 } from "./_shared.js";
 import { assertExternalDirectoryPermission, resolvePathArg } from "./hoisted.js";
 import {
@@ -32,9 +33,16 @@ import {
 
 const RefactorParams = Type.Object({
   op: StringEnum(["move", "extract", "inline"] as const, { description: "Refactoring operation" }),
-  filePath: Type.String({
-    description: "Source file (absolute or relative to project root)",
-  }),
+  filePath: Type.Optional(
+    Type.String({
+      description: "Source file (absolute or relative to project root)",
+    }),
+  ),
+  path: Type.Optional(
+    Type.String({
+      description: "Alias for `filePath` — provide one of the two.",
+    }),
+  ),
   symbol: Type.Optional(Type.String({ description: "Symbol name (for move, inline)" })),
   destination: Type.Optional(Type.String({ description: "Target file (for move)" })),
   scope: Type.Optional(Type.String({ description: "Disambiguation scope for move op" })),
@@ -70,7 +78,7 @@ export function buildRefactorSections(
   if (args.op === "extract") {
     return [
       `${theme.fg("success", "extracted")} ${theme.fg("toolOutput", asString(response.name) ?? args.name ?? "(function)")}`,
-      `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.filePath))}`,
+      `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? args.filePath ?? ""))}`,
       `${theme.fg("muted", "params")} ${Array.isArray(response.parameters) ? response.parameters.join(", ") || "none" : "none"}`,
       `${theme.fg("muted", "return type")} ${asString(response.return_type) ?? "unknown"}`,
     ];
@@ -78,7 +86,7 @@ export function buildRefactorSections(
 
   return [
     `${theme.fg("success", "inlined")} ${theme.fg("toolOutput", asString(response.symbol) ?? args.symbol ?? "(symbol)")}`,
-    `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.filePath))}`,
+    `${theme.fg("muted", "file")} ${theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? args.filePath ?? ""))}`,
     `${theme.fg("muted", "context")} ${asString(response.call_context) ?? "unknown"}`,
     `${theme.fg("muted", "substitutions")} ${asNumber(response.substitutions) ?? 0}`,
   ];
@@ -92,7 +100,7 @@ export function renderRefactorCall(
 ) {
   const summary = [
     theme.fg("accent", args.op),
-    accentPath(theme, args.filePath),
+    accentPath(theme, args.path ?? args.filePath),
     args.symbol ? theme.fg("toolOutput", args.symbol) : undefined,
   ]
     .filter(Boolean)
@@ -115,89 +123,91 @@ export function renderRefactorResult(
 }
 
 export function registerRefactorTool(pi: ExtensionAPI, ctx: PluginContext): void {
-  pi.registerTool({
-    name: "aft_refactor",
-    label: "refactor",
-    description:
-      "Workspace-wide refactoring that updates imports and references across files. `move` relocates a top-level symbol (not nested functions or class methods) to another file, rewriting imports workspace-wide; a checkpoint is created first. To move/rename a whole file, use aft_move. `extract` pulls a line range into a new function (TS/JS/TSX, Python). `inline` replaces a call with the function's body.",
-    parameters: RefactorParams,
-    async execute(
-      _toolCallId: string,
-      params: Static<typeof RefactorParams>,
-      _signal,
-      _onUpdate,
-      extCtx,
-    ) {
-      // Per-op required-field validation using isEmptyParam so empty strings
-      // ("") sent by GPT-family models trigger the proper "required" error
-      // instead of being passed through to Rust as a valid empty value.
-      if ((params.op === "move" || params.op === "inline") && isEmptyParam(params.symbol)) {
-        throw new Error(`'symbol' is required for '${params.op}' op`);
-      }
-      if (params.op === "move" && isEmptyParam(params.destination)) {
-        throw new Error("'destination' is required for 'move' op");
-      }
-      if (params.op === "extract" && isEmptyParam(params.name)) {
-        throw new Error("'name' is required for 'extract' op");
-      }
-      const startLine = coerceOptionalInt(
-        params.startLine,
-        "startLine",
-        1,
-        Number.MAX_SAFE_INTEGER,
-      );
-      const endLine = coerceOptionalInt(params.endLine, "endLine", 1, Number.MAX_SAFE_INTEGER);
-      const callSiteLine = coerceOptionalInt(
-        params.callSiteLine,
-        "callSiteLine",
-        1,
-        Number.MAX_SAFE_INTEGER,
-      );
-      if (params.op === "extract") {
-        if (startLine === undefined) throw new Error("'startLine' is required for 'extract' op");
-        if (endLine === undefined) throw new Error("'endLine' is required for 'extract' op");
-      }
-      if (params.op === "inline" && callSiteLine === undefined) {
-        throw new Error("'callSiteLine' is required for 'inline' op");
-      }
+  pi.registerTool(
+    withPathAliasPreparation({
+      name: "aft_refactor",
+      label: "refactor",
+      description:
+        "Workspace-wide refactoring that updates imports and references across files. `move` relocates a top-level symbol (not nested functions or class methods) to another file, rewriting imports workspace-wide; a checkpoint is created first. To move/rename a whole file, use aft_move. `extract` pulls a line range into a new function (TS/JS/TSX, Python). `inline` replaces a call with the function's body.",
+      parameters: RefactorParams,
+      async execute(
+        _toolCallId: string,
+        params: Static<typeof RefactorParams>,
+        _signal,
+        _onUpdate,
+        extCtx,
+      ) {
+        // Per-op required-field validation using isEmptyParam so empty strings
+        // ("") sent by GPT-family models trigger the proper "required" error
+        // instead of being passed through to Rust as a valid empty value.
+        if ((params.op === "move" || params.op === "inline") && isEmptyParam(params.symbol)) {
+          throw new Error(`'symbol' is required for '${params.op}' op`);
+        }
+        if (params.op === "move" && isEmptyParam(params.destination)) {
+          throw new Error("'destination' is required for 'move' op");
+        }
+        if (params.op === "extract" && isEmptyParam(params.name)) {
+          throw new Error("'name' is required for 'extract' op");
+        }
+        const startLine = coerceOptionalInt(
+          params.startLine,
+          "startLine",
+          1,
+          Number.MAX_SAFE_INTEGER,
+        );
+        const endLine = coerceOptionalInt(params.endLine, "endLine", 1, Number.MAX_SAFE_INTEGER);
+        const callSiteLine = coerceOptionalInt(
+          params.callSiteLine,
+          "callSiteLine",
+          1,
+          Number.MAX_SAFE_INTEGER,
+        );
+        if (params.op === "extract") {
+          if (startLine === undefined) throw new Error("'startLine' is required for 'extract' op");
+          if (endLine === undefined) throw new Error("'endLine' is required for 'extract' op");
+        }
+        if (params.op === "inline" && callSiteLine === undefined) {
+          throw new Error("'callSiteLine' is required for 'inline' op");
+        }
 
-      const filePath = await resolvePathArg(extCtx.cwd, params.filePath);
-      const destination = !isEmptyParam(params.destination)
-        ? await resolvePathArg(extCtx.cwd, params.destination as string)
-        : undefined;
-      const permissionTargets =
-        params.op === "move" && destination !== undefined ? [filePath, destination] : [filePath];
-      const checked = new Set<string>();
-      for (const target of permissionTargets) {
-        if (checked.has(target)) continue;
-        checked.add(target);
-        await assertExternalDirectoryPermission(extCtx, target, {
-          restrictToProjectRoot: ctx.config.restrict_to_project_root ?? false,
-        });
-      }
+        const filePath = await resolvePathArg(extCtx.cwd, params.path as string);
+        const destination = !isEmptyParam(params.destination)
+          ? await resolvePathArg(extCtx.cwd, params.destination as string)
+          : undefined;
+        const permissionTargets =
+          params.op === "move" && destination !== undefined ? [filePath, destination] : [filePath];
+        const checked = new Set<string>();
+        for (const target of permissionTargets) {
+          if (checked.has(target)) continue;
+          checked.add(target);
+          await assertExternalDirectoryPermission(extCtx, target, {
+            restrictToProjectRoot: ctx.config.restrict_to_project_root ?? false,
+          });
+        }
 
-      const bridge = bridgeFor(ctx, extCtx.cwd);
-      const rawArgs: Record<string, unknown> = { op: params.op, filePath };
-      // Use isEmptyParam everywhere so "" / [] / null don't slip through as
-      // valid string params that Rust then has to deal with.
-      if (!isEmptyParam(params.symbol)) rawArgs.symbol = params.symbol;
-      if (destination !== undefined) rawArgs.destination = destination;
-      if (!isEmptyParam(params.scope)) rawArgs.scope = params.scope;
-      if (!isEmptyParam(params.name)) rawArgs.name = params.name;
-      if (startLine !== undefined) rawArgs.startLine = startLine;
-      if (endLine !== undefined) rawArgs.endLine = endLine;
-      if (callSiteLine !== undefined) rawArgs.callSiteLine = callSiteLine;
-      const response = await callToolCall(bridge, "refactor", rawArgs, extCtx);
-      if (response.success === false) {
-        throw new Error(response.text || response.message || `${params.op} failed`);
-      }
-      return textResult(response.text, response);
-    },
-    renderCall(args, theme, context) {
-      return renderRefactorCall(args, theme, context);
-    },
-    renderResult(result, _options, theme, context) {
-      return renderRefactorResult(result, context.args, theme, context);
-    },
-  });
+        const bridge = bridgeFor(ctx, extCtx.cwd);
+        const rawArgs: Record<string, unknown> = { op: params.op, filePath };
+        // Use isEmptyParam everywhere so "" / [] / null don't slip through as
+        // valid string params that Rust then has to deal with.
+        if (!isEmptyParam(params.symbol)) rawArgs.symbol = params.symbol;
+        if (destination !== undefined) rawArgs.destination = destination;
+        if (!isEmptyParam(params.scope)) rawArgs.scope = params.scope;
+        if (!isEmptyParam(params.name)) rawArgs.name = params.name;
+        if (startLine !== undefined) rawArgs.startLine = startLine;
+        if (endLine !== undefined) rawArgs.endLine = endLine;
+        if (callSiteLine !== undefined) rawArgs.callSiteLine = callSiteLine;
+        const response = await callToolCall(bridge, "refactor", rawArgs, extCtx);
+        if (response.success === false) {
+          throw new Error(response.text || response.message || `${params.op} failed`);
+        }
+        return textResult(response.text, response);
+      },
+      renderCall(args, theme, context) {
+        return renderRefactorCall(args, theme, context);
+      },
+      renderResult(result, _options, theme, context) {
+        return renderRefactorResult(result, context.args, theme, context);
+      },
+    }),
+  );
 }

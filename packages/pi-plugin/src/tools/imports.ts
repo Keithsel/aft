@@ -7,7 +7,13 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { AgentToolResult, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "typebox";
 import type { PluginContext } from "../types.js";
-import { bridgeFor, callToolCall, isEmptyParam, textResult } from "./_shared.js";
+import {
+  bridgeFor,
+  callToolCall,
+  isEmptyParam,
+  textResult,
+  withPathAliasPreparation,
+} from "./_shared.js";
 import { assertExternalDirectoryPermission, resolvePathArg } from "./hoisted.js";
 import {
   accentPath,
@@ -24,7 +30,12 @@ import {
 
 const ImportParams = Type.Object({
   op: StringEnum(["add", "remove", "organize"] as const, { description: "Import operation" }),
-  filePath: Type.String({ description: "Path to the file (absolute or relative to project root)" }),
+  filePath: Type.Optional(
+    Type.String({ description: "Path to the file (absolute or relative to project root)" }),
+  ),
+  path: Type.Optional(
+    Type.String({ description: "Alias for `filePath` — provide one of the two." }),
+  ),
   module: Type.Optional(
     Type.String({ description: "Module path (required for add/remove), e.g. 'react', './utils'" }),
   ),
@@ -87,7 +98,7 @@ export function buildImportSections(
             .join(" · ")
         : "No imports found";
     return [
-      `${theme.fg("success", "organized")} ${theme.fg("accent", asString(response.file) ?? args.filePath)}`,
+      `${theme.fg("success", "organized")} ${theme.fg("accent", asString(response.file) ?? args.path ?? args.filePath ?? "")}`,
       `${theme.fg("muted", "groups")} ${groupText}`,
       `${theme.fg("muted", "duplicates removed")} ${asNumber(response.removed_duplicates) ?? 0}`,
     ];
@@ -101,7 +112,7 @@ export function buildImportSections(
         : theme.fg("success", "added");
     return [
       `${status} ${theme.fg("accent", moduleName)}`,
-      `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.filePath)}`,
+      `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.path ?? args.filePath ?? "")}`,
       `${theme.fg("muted", "group")} ${asString(response.group) ?? "—"}`,
     ];
   }
@@ -113,7 +124,7 @@ export function buildImportSections(
     : `${theme.fg("warning", "not present")} ${theme.fg("accent", moduleName)}`;
   return [
     removeStatus,
-    `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.filePath)}`,
+    `${theme.fg("muted", "file")} ${theme.fg("accent", asString(response.file) ?? args.path ?? args.filePath ?? "")}`,
     args.removeName
       ? `${theme.fg("muted", "name")} ${args.removeName}`
       : `${theme.fg("muted", "scope")} entire import`,
@@ -128,7 +139,7 @@ export function renderImportCall(
 ) {
   const summary = [
     theme.fg("accent", args.op),
-    accentPath(theme, args.filePath),
+    accentPath(theme, args.path ?? args.filePath ?? ""),
     args.module ? theme.fg("toolOutput", args.module) : undefined,
   ]
     .filter(Boolean)
@@ -153,49 +164,51 @@ export function registerImportTools(pi: ExtensionAPI, ctx: PluginContext): void 
     ctx.config.backup?.enabled === false
       ? "Backup capture is disabled by user config; review broad cleanup changes before proceeding."
       : "Use aft_safety checkpoint/undo before broad cleanup.";
-  pi.registerTool({
-    name: "aft_import",
-    label: "import",
-    description: `Language-aware import management. Supports TS, JS, TSX, Python, Rust, Go, Solidity, Java, C#, PHP, Kotlin, Scala, Swift, Ruby, Lua, C, C++, Perl, Vue. Ops: \`add\`, \`remove\`, \`organize\`. ${organizeRecovery}`,
-    parameters: ImportParams,
-    async execute(
-      _toolCallId: string,
-      params: Static<typeof ImportParams>,
-      _signal,
-      _onUpdate,
-      extCtx,
-    ) {
-      if ((params.op === "add" || params.op === "remove") && isEmptyParam(params.module)) {
-        throw new Error(`op='${params.op}' requires 'module'`);
-      }
-      const filePath = await resolvePathArg(extCtx.cwd, params.filePath);
-      await assertExternalDirectoryPermission(extCtx, filePath, {
-        restrictToProjectRoot: ctx.config.restrict_to_project_root ?? false,
-      });
-      const bridge = bridgeFor(ctx, extCtx.cwd);
-      const rawArgs: Record<string, unknown> = { op: params.op, filePath };
-      if (params.module !== undefined) rawArgs.module = params.module;
-      if (params.names !== undefined) rawArgs.names = params.names;
-      if (params.defaultImport !== undefined) rawArgs.defaultImport = params.defaultImport;
-      if (params.namespace !== undefined) rawArgs.namespace = params.namespace;
-      if (params.alias !== undefined) rawArgs.alias = params.alias;
-      if (params.modifiers !== undefined) rawArgs.modifiers = params.modifiers;
-      if (params.importKind !== undefined) rawArgs.importKind = params.importKind;
-      if (params.removeName !== undefined) rawArgs.removeName = params.removeName;
-      if (params.typeOnly !== undefined) rawArgs.typeOnly = params.typeOnly;
-      if (params.validate !== undefined) rawArgs.validate = params.validate;
+  pi.registerTool(
+    withPathAliasPreparation({
+      name: "aft_import",
+      label: "import",
+      description: `Language-aware import management. Supports TS, JS, TSX, Python, Rust, Go, Solidity, Java, C#, PHP, Kotlin, Scala, Swift, Ruby, Lua, C, C++, Perl, Vue. Ops: \`add\`, \`remove\`, \`organize\`. ${organizeRecovery}`,
+      parameters: ImportParams,
+      async execute(
+        _toolCallId: string,
+        params: Static<typeof ImportParams>,
+        _signal,
+        _onUpdate,
+        extCtx,
+      ) {
+        if ((params.op === "add" || params.op === "remove") && isEmptyParam(params.module)) {
+          throw new Error(`op='${params.op}' requires 'module'`);
+        }
+        const filePath = await resolvePathArg(extCtx.cwd, params.path as string);
+        await assertExternalDirectoryPermission(extCtx, filePath, {
+          restrictToProjectRoot: ctx.config.restrict_to_project_root ?? false,
+        });
+        const bridge = bridgeFor(ctx, extCtx.cwd);
+        const rawArgs: Record<string, unknown> = { op: params.op, filePath };
+        if (params.module !== undefined) rawArgs.module = params.module;
+        if (params.names !== undefined) rawArgs.names = params.names;
+        if (params.defaultImport !== undefined) rawArgs.defaultImport = params.defaultImport;
+        if (params.namespace !== undefined) rawArgs.namespace = params.namespace;
+        if (params.alias !== undefined) rawArgs.alias = params.alias;
+        if (params.modifiers !== undefined) rawArgs.modifiers = params.modifiers;
+        if (params.importKind !== undefined) rawArgs.importKind = params.importKind;
+        if (params.removeName !== undefined) rawArgs.removeName = params.removeName;
+        if (params.typeOnly !== undefined) rawArgs.typeOnly = params.typeOnly;
+        if (params.validate !== undefined) rawArgs.validate = params.validate;
 
-      const response = await callToolCall(bridge, "import", rawArgs, extCtx);
-      if (response.success === false) {
-        throw new Error(response.text || response.message || `${params.op} failed`);
-      }
-      return textResult(response.text, response);
-    },
-    renderCall(args, theme, context) {
-      return renderImportCall(args, theme, context);
-    },
-    renderResult(result, _options, theme, context) {
-      return renderImportResult(result, context.args, theme, context);
-    },
-  });
+        const response = await callToolCall(bridge, "import", rawArgs, extCtx);
+        if (response.success === false) {
+          throw new Error(response.text || response.message || `${params.op} failed`);
+        }
+        return textResult(response.text, response);
+      },
+      renderCall(args, theme, context) {
+        return renderImportCall(args, theme, context);
+      },
+      renderResult(result, _options, theme, context) {
+        return renderImportResult(result, context.args, theme, context);
+      },
+    }),
+  );
 }

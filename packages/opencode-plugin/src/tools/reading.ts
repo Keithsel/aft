@@ -1,6 +1,7 @@
 import { coerceBoolean, coerceTargetParam, formatZoomText } from "@cortexkit/aft-bridge";
 import type { ToolContext, ToolDefinition, ToolResult } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import {
   callToolCall,
@@ -15,10 +16,13 @@ const z = tool.schema;
 
 /** Build a short TUI title for an `aft_zoom` invocation, based on which mode the agent used. */
 function buildZoomTitle(args: {
+  path?: string;
   filePath?: string;
   url?: string;
   symbols?: string | string[];
-  targets?: { filePath: string; symbol: string } | Array<{ filePath: string; symbol: string }>;
+  targets?:
+    | { path?: string; filePath?: string; symbol: string }
+    | Array<{ path?: string; filePath?: string; symbol: string }>;
 }): string {
   // Use isEmptyParam so empty arrays / null / "" don't produce
   // "0 targets across files" — let the function fall through to the
@@ -26,15 +30,15 @@ function buildZoomTitle(args: {
   if (!isEmptyParam(args.targets)) {
     if (Array.isArray(args.targets)) {
       if (args.targets.length === 1 && args.targets[0]) {
-        return `${args.targets[0].filePath}#${args.targets[0].symbol}`;
+        return `${args.targets[0].path ?? args.targets[0].filePath}#${args.targets[0].symbol}`;
       }
       return `${args.targets.length} targets across files`;
     }
     // biome-ignore lint/style/noNonNullAssertion: isEmptyParam guards null/undefined
-    return `${args.targets!.filePath}#${args.targets!.symbol}`;
+    return `${args.targets!.path ?? args.targets!.filePath}#${args.targets!.symbol}`;
   }
 
-  const path = args.filePath ?? args.url ?? "";
+  const path = args.path ?? args.filePath ?? args.url ?? "";
   if (typeof args.symbols === "string") return path ? `${path}#${args.symbols}` : args.symbols;
   if (Array.isArray(args.symbols) && args.symbols.length > 0) {
     if (args.symbols.length === 1) return path ? `${path}#${args.symbols[0]}` : args.symbols[0];
@@ -60,7 +64,7 @@ interface ZoomBatchResult {
  * Tool definitions for code reading commands: outline + zoom.
  */
 export function readingTools(ctx: PluginContext): Record<string, ToolDefinition> {
-  return {
+  return prepareToolMap({
     aft_outline: {
       description:
         "Structural outline of source code, documentation files, or remote URLs. For code, returns symbols (functions, classes, types) with line ranges. For Markdown and HTML, returns heading hierarchy. Use this to explore structure before reading specific sections with aft_zoom. Set `files: true` with a directory target for a flat indexed file tree with language, symbol count, and byte metadata.\n\n" +
@@ -197,18 +201,19 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         // instead of omitting optional params. Use `isEmptyParam` so e.g.
         // `targets: []` or `url: ""` don't trigger mutual-exclusion errors
         // against fields the agent didn't actually intend to provide.
-        // `targets` also accepts nested object/array shapes. Only treat
-        // `targets` as not-provided when EVERY entry is fully empty
-        // (`[{filePath: "", symbol: ""}]`, `{filePath: "", symbol: ""}`)
-        // — that's the GPT-class "I didn't intend this param" signal.
-        // If any entry has even one non-empty field, the agent intends
-        // targets mode; let the per-entry validation below surface the
-        // specific error ("targets[0].filePath must be non-empty" etc).
+        // `targets` also accepts nested object/array shapes. Treat `targets` as
+        // omitted only when every entry is empty, such as
+        // `[{path: "", symbol: ""}]` or `{path: "", symbol: ""}`.
+        // When any target entry contains a non-empty field, treat `targets` as
+        // supplied and let per-entry validation report an error such as
+        // `targets[0].path must be non-empty`.
         const hasTargetsProvided = (t: unknown): boolean => {
           if (isEmptyParam(t)) return false;
           const entryEmpty = (entry: unknown): boolean => {
             if (!entry || typeof entry !== "object") return true;
-            const fp = (entry as { filePath?: unknown }).filePath;
+            const fp =
+              (entry as { path?: unknown; filePath?: unknown }).path ??
+              (entry as { filePath?: unknown }).filePath;
             const sym = (entry as { symbol?: unknown }).symbol;
             const fpEmpty = typeof fp !== "string" || fp.length === 0;
             const symEmpty = typeof sym !== "string" || sym.length === 0;
@@ -217,7 +222,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
           if (Array.isArray(t)) return !t.every(entryEmpty);
           return !entryEmpty(t);
         };
-        const hasFilePath = !isEmptyParam(args.filePath);
+        const hasFilePath = !isEmptyParam(args.path ?? args.filePath);
         const hasUrl = !isEmptyParam(args.url);
         const hasTargets = hasTargetsProvided(args.targets);
         const hasSymbols = !isEmptyParam(args.symbols);
@@ -240,7 +245,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         // the return value is the only channel that survives.)
         const zoomTitle = buildZoomTitle(args);
         const zoomDisplay: Record<string, unknown> = { title: zoomTitle };
-        if (hasFilePath) zoomDisplay.filePath = args.filePath;
+        if (hasFilePath) zoomDisplay.path = args.path;
         if (hasUrl) zoomDisplay.url = args.url;
         if (hasSymbols) {
           zoomDisplay.symbols =
@@ -260,18 +265,17 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         // that get silently ignored.
         if (hasTargets) {
           if (hasFilePath || hasUrl || hasSymbols) {
-            throw new Error(
-              "'targets' is mutually exclusive with 'filePath', 'url', and 'symbols'",
-            );
+            throw new Error("'targets' is mutually exclusive with 'path', 'url', and 'symbols'");
           }
           const targets = Array.isArray(args.targets)
-            ? (args.targets as Array<{ filePath: string; symbol: string }>)
-            : ([args.targets] as Array<{ filePath: string; symbol: string }>);
+            ? (args.targets as Array<{ path?: string; filePath?: string; symbol: string }>)
+            : ([args.targets] as Array<{ path?: string; filePath?: string; symbol: string }>);
           if (targets.length === 0) {
             throw new Error("'targets' must be a non-empty object or array");
           }
           for (const [i, entry] of targets.entries()) {
-            if (!entry || typeof entry.filePath !== "string" || entry.filePath.length === 0) {
+            const targetPath = entry?.path ?? entry?.filePath;
+            if (typeof targetPath !== "string" || targetPath.length === 0) {
               throw new Error(`targets[${i}].filePath must be a non-empty string`);
             }
             if (typeof entry.symbol !== "string" || entry.symbol.length === 0) {
@@ -279,7 +283,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
             }
           }
           const resolvedTargets = await Promise.all(
-            targets.map((t) => resolvePathArg(ctx, context, t.filePath)),
+            targets.map((t) => resolvePathArg(ctx, context, (t.path ?? t.filePath) as string)),
           );
           const permissionDenied = await assertPathExternalPermissions(
             ctx,
@@ -288,7 +292,12 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
           );
           if (permissionDenied) return permissionDeniedResponse(permissionDenied);
 
-          const rawArgs: Record<string, unknown> = { targets };
+          const rawArgs: Record<string, unknown> = {
+            targets: targets.map((target) => ({
+              filePath: target.path ?? target.filePath,
+              symbol: target.symbol,
+            })),
+          };
           if (contextLines !== undefined) rawArgs.contextLines = contextLines;
           if (wantCallgraph) rawArgs.callgraph = true;
 
@@ -300,24 +309,24 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         }
 
         if (!hasFilePath && !hasUrl) {
-          throw new Error("Provide exactly one of 'filePath', 'url', or 'targets'");
+          throw new Error("Provide exactly one of 'path', 'url', or 'targets'");
         }
         if (hasFilePath && hasUrl) {
-          throw new Error("Provide exactly ONE of 'filePath' or 'url' — not both");
+          throw new Error("Provide exactly ONE of 'path' or 'url' — not both");
         }
 
         // URL mode passes through to Rust; Rust fetches, validates, and caches.
         // File mode still resolves locally before dispatch so external-directory
         // permission checks approve the same path the server will read.
         if (!hasUrl) {
-          const file = await resolvePathArg(ctx, context, args.filePath as string);
+          const file = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
           const permissionDenied = await assertPathExternalPermissions(ctx, context, file);
           if (permissionDenied) return permissionDeniedResponse(permissionDenied);
         }
 
         const rawArgs: Record<string, unknown> = hasUrl
           ? { url: args.url }
-          : { filePath: args.filePath };
+          : { filePath: args.path ?? args.filePath };
         if (hasSymbols) rawArgs.symbols = args.symbols;
         if (contextLines !== undefined) rawArgs.contextLines = contextLines;
         if (wantCallgraph) rawArgs.callgraph = true;
@@ -329,7 +338,7 @@ export function readingTools(ctx: PluginContext): Record<string, ToolDefinition>
         return withMeta(response.text);
       },
     },
-  };
+  });
 }
 
 /**

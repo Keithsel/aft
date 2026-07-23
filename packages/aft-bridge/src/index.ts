@@ -116,6 +116,11 @@ export {
   getManualInstallHint,
   isOrtAutoDownloadSupported,
 } from "./onnx-runtime.js";
+export {
+  InvalidRequestError,
+  isWellFormedUnicodeString,
+  prepareCanonicalPathArguments,
+} from "./path-aliases.js";
 export type { LegacyAftConfigSource, ResolvedAftConfigPaths } from "./paths.js";
 export {
   decodeFileUrl,

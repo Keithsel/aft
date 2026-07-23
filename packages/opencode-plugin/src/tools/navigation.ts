@@ -1,6 +1,7 @@
 import { coerceBoolean } from "@cortexkit/aft-bridge";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import {
   callToolCall,
@@ -26,7 +27,7 @@ const CALLGRAPH_SOFT_CODES = new Set(["symbol_not_found", "callgraph_building"])
  * Tool definitions for call-graph navigation: call_tree, callers, trace_to, trace_to_symbol, impact, and trace_data.
  */
 export function navigationTools(ctx: PluginContext): Record<string, ToolDefinition> {
-  return {
+  return prepareToolMap({
     aft_callgraph: {
       description:
         "Answer code-relationship questions from a real call graph — instead of grep + read chains. Reach for this whenever the question is about how symbols connect: who calls X, what X calls, what breaks if X changes, how execution reaches X, or how a value flows.\n\n" +
@@ -83,8 +84,8 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
           ),
       },
       execute: async (args, context): Promise<string> => {
-        if (isEmptyParam(args.filePath)) {
-          throw new Error("'filePath' is required");
+        if (isEmptyParam(args.path ?? args.filePath)) {
+          throw new Error("'path' is required");
         }
         if (isEmptyParam(args.symbol)) {
           throw new Error("'symbol' is required");
@@ -96,9 +97,9 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
           throw new Error("'toSymbol' is required for 'trace_to_symbol' op");
         }
 
-        const filePath = await resolvePathArg(ctx, context, args.filePath as string);
-        const toFile = !isEmptyParam(args.toFile)
-          ? await resolvePathArg(ctx, context, args.toFile as string)
+        const filePath = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
+        const toFile = !isEmptyParam(args.toPath ?? args.toFile)
+          ? await resolvePathArg(ctx, context, (args.toPath ?? args.toFile) as string)
           : undefined;
 
         const checked = new Set<string>();
@@ -111,14 +112,14 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
 
         const rawArgs: Record<string, unknown> = {
           op: args.op,
-          filePath: args.filePath,
+          filePath: args.path ?? args.filePath,
           symbol: args.symbol,
         };
         const depth = coerceOptionalInt(args.depth, "depth", 1, Number.MAX_SAFE_INTEGER);
         if (depth !== undefined) rawArgs.depth = depth;
         if (!isEmptyParam(args.expression)) rawArgs.expression = args.expression;
         if (!isEmptyParam(args.toSymbol)) rawArgs.toSymbol = args.toSymbol;
-        if (!isEmptyParam(args.toFile)) rawArgs.toFile = args.toFile;
+        if (!isEmptyParam(args.toPath ?? args.toFile)) rawArgs.toFile = args.toPath ?? args.toFile;
         if (!isEmptyParam(args.includeTests))
           rawArgs.includeTests = coerceBoolean(args.includeTests);
         if (!isEmptyParam(args.includeUnresolved))
@@ -139,5 +140,5 @@ export function navigationTools(ctx: PluginContext): Record<string, ToolDefiniti
         return response.text;
       },
     },
-  };
+  });
 }

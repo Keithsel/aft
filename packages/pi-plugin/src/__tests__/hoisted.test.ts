@@ -177,7 +177,7 @@ describe("hoisted tool adapters", () => {
     expect(toolArgs(calls[0])).toEqual({ filePath: artifactPath });
   });
 
-  test("read accepts path or filePath, preserves path precedence, and errors clearly when both are absent", async () => {
+  test("read accepts canonical and legacy spellings but rejects unequal dual spelling", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge(() => ({ success: true, text: "ok" }));
     registerHoistedTools(api, makePluginContext(bridge), {
@@ -196,11 +196,12 @@ describe("hoisted tool adapters", () => {
     expect(schemaAccepts(readTool.parameters, { path: "canonical.ts", filePath: "alias.ts" })).toBe(
       true,
     );
-    await executeTool(readTool, { path: "canonical.ts", filePath: "alias.ts" });
-    expect(toolArgs(calls[1])).toEqual({ filePath: "canonical.ts" });
+    await expect(
+      executeTool(readTool, { path: "canonical.ts", filePath: "alias.ts" }),
+    ).rejects.toThrow(/equal decoded strings/);
 
     expect(schemaAccepts(readTool.parameters, {})).toBe(true);
-    await expect(executeTool(readTool, {})).rejects.toThrow("missing required parameter `path`");
+    await expect(executeTool(readTool, {})).rejects.toThrow("'path' is required");
   });
 
   test("read emits image content for vision-capable Pi models", async () => {
@@ -507,24 +508,21 @@ describe("hoisted tool adapters", () => {
         newString: "after",
       }),
     ).toBe(true);
-    await executeTool(editTool, {
-      filePath: "canonical.ts",
-      path: "alias.ts",
-      oldString: "before",
-      newString: "after",
-    });
-    expect(toolArgs(calls[1])).toEqual({
-      filePath: "canonical.ts",
-      oldString: "before",
-      newString: "after",
-    });
+    await expect(
+      executeTool(editTool, {
+        filePath: "canonical.ts",
+        path: "alias.ts",
+        oldString: "before",
+        newString: "after",
+      }),
+    ).rejects.toThrow(/equal decoded strings/);
 
     expect(schemaAccepts(editTool.parameters, { oldString: "before", newString: "after" })).toBe(
       true,
     );
     await expect(
       executeTool(editTool, { oldString: "before", newString: "after" }),
-    ).rejects.toThrow("missing required parameter `filePath`");
+    ).rejects.toThrow("'path' is required");
   });
 
   test("edit defaults diagnostics off and omits LSP payload", async () => {
@@ -799,7 +797,7 @@ describe("hoisted tool adapters", () => {
     expect(result.details.diagnostics).toBeUndefined();
   });
 
-  test("write accepts path as a compatibility alias without overriding filePath", async () => {
+  test("write accepts path as a compatibility alias and rejects unequal dual spelling", async () => {
     const { api, tools } = makeMockApi();
     const { bridge, calls } = makeMockBridge(() => ({ success: true, diff: { additions: 1 } }));
     registerHoistedTools(api, makePluginContext(bridge), {
@@ -822,13 +820,12 @@ describe("hoisted tool adapters", () => {
         content: "x",
       }),
     ).toBe(true);
-    await executeTool(writeTool, { filePath: "canonical.ts", path: "alias.ts", content: "x" });
-    expect(toolArgs(calls[1])).toEqual({ filePath: "canonical.ts", content: "x" });
+    await expect(
+      executeTool(writeTool, { filePath: "canonical.ts", path: "alias.ts", content: "x" }),
+    ).rejects.toThrow(/equal decoded strings/);
 
     expect(schemaAccepts(writeTool.parameters, { content: "x" })).toBe(true);
-    await expect(executeTool(writeTool, { content: "x" })).rejects.toThrow(
-      "missing required parameter `filePath`",
-    );
+    await expect(executeTool(writeTool, { content: "x" })).rejects.toThrow("'path' is required");
   });
 
   test("write follows lsp.diagnostics_on_edit (config-driven; no per-call param)", async () => {

@@ -9,9 +9,17 @@ import type {
   ToolCallOptions,
   ToolCallResult,
 } from "@cortexkit/aft-bridge";
-import { formatBridgeErrorMessage, timeoutForCommand } from "@cortexkit/aft-bridge";
-import type { AgentToolResult, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import {
+  formatBridgeErrorMessage,
+  prepareCanonicalPathArguments,
+  timeoutForCommand,
+} from "@cortexkit/aft-bridge";
+import type {
+  AgentToolResult,
+  ExtensionContext,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import { type Static, type TSchema, Type } from "typebox";
 import { ingestBgCompletions } from "../bg-notifications.js";
 import type { PluginContext } from "../types.js";
 
@@ -42,8 +50,29 @@ export {
   formatBridgeErrorMessage,
   isEmptyParam,
   LONG_RUNNING_COMMAND_TIMEOUT_MS,
+  prepareCanonicalPathArguments,
   timeoutForCommand,
 } from "@cortexkit/aft-bridge";
+
+/** Attach Pi's raw-argument preparation hook to a path-bearing tool. */
+export function withPathAliasPreparation<
+  TParams extends TSchema,
+  TDetails = unknown,
+  TState = unknown,
+>(tool: ToolDefinition<TParams, TDetails, TState>): ToolDefinition<TParams, TDetails, TState> {
+  const existing = tool.prepareArguments;
+  const prepare = (args: unknown): Static<TParams> => {
+    const prepared = prepareCanonicalPathArguments(tool.name, args);
+    return (existing ? existing(prepared) : prepared) as Static<TParams>;
+  };
+  return {
+    ...tool,
+    prepareArguments: prepare,
+    execute(toolCallId, params, signal, onUpdate, context) {
+      return tool.execute(toolCallId, prepare(params), signal, onUpdate, context);
+    },
+  };
+}
 
 /** Get the session bridge for the current working directory. */
 export function bridgeFor(ctx: PluginContext, cwd: string): AftProjectTransport {

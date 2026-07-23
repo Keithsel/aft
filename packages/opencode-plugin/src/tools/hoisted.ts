@@ -15,6 +15,7 @@ import { coerceBoolean, coerceStringArray } from "@cortexkit/aft-bridge";
 import type { ToolDefinition, ToolResult } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { resolveBashConfig } from "../config.js";
+import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import {
   callBridge,
@@ -323,126 +324,129 @@ Examples:
  * Creates the simple read tool. Registers as "read" when hoisted, "aft_read" when not.
  */
 export function createReadTool(ctx: PluginContext): ToolDefinition {
-  return {
-    description: READ_DESCRIPTION,
-    args: {
-      filePath: z
-        .string()
-        .describe("Path to file or directory (absolute or relative to project root)"),
-      startLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
-        "1-based line to start reading from",
-      ),
-      endLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
-        "1-based line to stop reading at (inclusive)",
-      ),
-      limit: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
-        "Max lines to return (default: 2000)",
-      ),
-      offset: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
-        "1-based line number to start reading from (use with limit). Ignored if startLine is provided",
-      ),
-    },
-    execute: async (args, context): Promise<ToolResult> => {
-      const file = args.filePath as string;
-      const projectRoot = await resolveProjectRoot(ctx, context);
+  return prepareToolMap({
+    read: {
+      description: READ_DESCRIPTION,
+      args: {
+        filePath: z
+          .string()
+          .describe("Path to file or directory (absolute or relative to project root)"),
+        startLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
+          "1-based line to start reading from",
+        ),
+        endLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
+          "1-based line to stop reading at (inclusive)",
+        ),
+        limit: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
+          "Max lines to return (default: 2000)",
+        ),
+        offset: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
+          "1-based line number to start reading from (use with limit). Ignored if startLine is provided",
+        ),
+      },
+      execute: async (args, context): Promise<ToolResult> => {
+        const file = (args.path ?? args.filePath) as string;
+        const projectRoot = await resolveProjectRoot(ctx, context);
 
-      // Resolve relative paths from the same session/project root used by the bridge.
-      const filePath = resolvePathFromProjectRoot(projectRoot, file);
+        // Resolve relative paths from the same session/project root used by the bridge.
+        const filePath = resolvePathFromProjectRoot(projectRoot, file);
 
-      // Apply OpenCode's external-directory rule first. Under AFT's project
-      // restriction, reads continue to Rust so its session task registry can
-      // distinguish exact bash artifacts from ordinary external paths.
-      {
-        const denial = await assertExternalDirectoryPermission(ctx, context, filePath, {
-          serverValidatedRead: true,
-        });
-        if (denial) return permissionDeniedResponse(denial);
-      }
+        // Apply OpenCode's external-directory rule first. Under AFT's project
+        // restriction, reads continue to Rust so its session task registry can
+        // distinguish exact bash artifacts from ordinary external paths.
+        {
+          const denial = await assertExternalDirectoryPermission(ctx, context, filePath, {
+            serverValidatedRead: true,
+          });
+          if (denial) return permissionDeniedResponse(denial);
+        }
 
-      // Permission check
-      try {
-        await runAsk(
-          context.ask({
-            permission: "read",
-            patterns: [filePath],
-            always: ["*"],
-            metadata: {},
-          }),
+        // Permission check
+        try {
+          await runAsk(
+            context.ask({
+              permission: "read",
+              patterns: [filePath],
+              always: ["*"],
+              metadata: {},
+            }),
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message)
+            return permissionDeniedResponse(error.message);
+          return permissionDeniedResponse("Permission denied.");
+        }
+
+        const rawStartLine = coerceOptionalInt(
+          args.startLine,
+          "startLine",
+          1,
+          Number.MAX_SAFE_INTEGER,
         );
-      } catch (error) {
-        if (error instanceof Error && error.message) return permissionDeniedResponse(error.message);
-        return permissionDeniedResponse("Permission denied.");
-      }
+        const rawEndLine = coerceOptionalInt(args.endLine, "endLine", 1, Number.MAX_SAFE_INTEGER);
+        const rawLimit = coerceOptionalInt(args.limit, "limit", 1, Number.MAX_SAFE_INTEGER);
+        const rawOffset = coerceOptionalInt(args.offset, "offset", 1, Number.MAX_SAFE_INTEGER);
 
-      const rawStartLine = coerceOptionalInt(
-        args.startLine,
-        "startLine",
-        1,
-        Number.MAX_SAFE_INTEGER,
-      );
-      const rawEndLine = coerceOptionalInt(args.endLine, "endLine", 1, Number.MAX_SAFE_INTEGER);
-      const rawLimit = coerceOptionalInt(args.limit, "limit", 1, Number.MAX_SAFE_INTEGER);
-      const rawOffset = coerceOptionalInt(args.offset, "offset", 1, Number.MAX_SAFE_INTEGER);
-
-      // Normalize offset/limit to startLine/endLine (backward compat with opencode's read)
-      let startLine = rawStartLine;
-      let endLine = rawEndLine;
-      if (startLine === undefined && rawOffset !== undefined) {
-        startLine = rawOffset;
-        if (rawLimit !== undefined) {
-          endLine = rawOffset + rawLimit - 1;
+        // Normalize offset/limit to startLine/endLine (backward compat with opencode's read)
+        let startLine = rawStartLine;
+        let endLine = rawEndLine;
+        if (startLine === undefined && rawOffset !== undefined) {
+          startLine = rawOffset;
+          if (rawLimit !== undefined) {
+            endLine = rawOffset + rawLimit - 1;
+          }
         }
-      }
 
-      const rawArgs: Record<string, unknown> = { filePath: file };
-      if (startLine !== undefined) rawArgs.startLine = startLine;
-      if (endLine !== undefined) rawArgs.endLine = endLine;
-      // Only send limit if we did NOT convert offset to startLine/endLine.
-      if (rawLimit !== undefined && rawOffset === undefined) rawArgs.limit = rawLimit;
+        const rawArgs: Record<string, unknown> = { filePath: file };
+        if (startLine !== undefined) rawArgs.startLine = startLine;
+        if (endLine !== undefined) rawArgs.endLine = endLine;
+        // Only send limit if we did NOT convert offset to startLine/endLine.
+        if (rawLimit !== undefined && rawOffset === undefined) rawArgs.limit = rawLimit;
 
-      const response = await callToolCall(ctx, context, "read", rawArgs);
+        const response = await callToolCall(ctx, context, "read", rawArgs);
 
-      // Error response (e.g. file not found)
-      if (response.success === false) {
-        throw new Error((response.message as string) || "read failed");
-      }
+        // Error response (e.g. file not found)
+        if (response.success === false) {
+          throw new Error((response.message as string) || "read failed");
+        }
 
-      const dp = relativeToWorktree(filePath, projectRoot) || file;
-      const output = response.text;
+        const dp = relativeToWorktree(filePath, projectRoot) || file;
+        const output = response.text;
 
-      const attachments = readAttachments(response);
-      if (attachments.length > 0) {
-        const toolAttachments = attachments
-          .filter(
-            (attachment) =>
-              typeof attachment.mime === "string" && typeof attachment.data === "string",
-          )
-          .map((attachment) => ({
-            type: "file" as const,
-            mime: attachment.mime as string,
-            url: `data:${attachment.mime};base64,${attachment.data}`,
-          }));
-        if (toolAttachments.length > 0) {
-          const first = attachments[0];
-          const firstMime = typeof first.mime === "string" ? first.mime : "";
-          return {
-            output,
-            title: dp,
-            attachments: toolAttachments,
-            metadata: {
-              preview: output,
-              filepath: filePath,
+        const attachments = readAttachments(response);
+        if (attachments.length > 0) {
+          const toolAttachments = attachments
+            .filter(
+              (attachment) =>
+                typeof attachment.mime === "string" && typeof attachment.data === "string",
+            )
+            .map((attachment) => ({
+              type: "file" as const,
+              mime: attachment.mime as string,
+              url: `data:${attachment.mime};base64,${attachment.data}`,
+            }));
+          if (toolAttachments.length > 0) {
+            const first = attachments[0];
+            const firstMime = typeof first.mime === "string" ? first.mime : "";
+            return {
+              output,
               title: dp,
-              isImage: first.kind === "image" || firstMime.startsWith("image/"),
-              isPdf: first.kind === "pdf" || firstMime === "application/pdf",
-            },
-          };
+              attachments: toolAttachments,
+              metadata: {
+                preview: output,
+                filepath: filePath,
+                title: dp,
+                isImage: first.kind === "image" || firstMime.startsWith("image/"),
+                isPdf: first.kind === "pdf" || firstMime === "application/pdf",
+              },
+            };
+          }
         }
-      }
 
-      return { output, title: dp, metadata: { title: dp } };
+        return { output, title: dp, metadata: { title: dp } };
+      },
     },
-  };
+  }).read;
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +471,7 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
       content: z.string().describe("The full content to write to the file"),
     },
     execute: async (args, context): Promise<ToolResult> => {
-      const file = args.filePath as string;
+      const file = (args.path ?? args.filePath) as string;
       const content = args.content as string;
       const projectRoot = await resolveProjectRoot(ctx, context);
 
@@ -684,8 +688,8 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
         );
       }
 
-      const file = args.filePath as string;
-      if (!file) throw new Error("'filePath' parameter is required");
+      const file = (args.path ?? args.filePath) as string;
+      if (!file) throw new Error("'path' parameter is required");
       const projectRoot = await resolveProjectRoot(ctx, context);
 
       const filePath = resolvePathFromProjectRoot(projectRoot, file);
@@ -1052,7 +1056,10 @@ function createMoveTool(ctx: PluginContext): ToolDefinition {
     },
     execute: async (args, context): Promise<string> => {
       const projectRoot = await resolveProjectRoot(ctx, context);
-      const filePath = resolvePathFromProjectRoot(projectRoot, args.filePath as string);
+      const filePath = resolvePathFromProjectRoot(
+        projectRoot,
+        (args.path ?? args.filePath) as string,
+      );
       const destPath = resolvePathFromProjectRoot(projectRoot, args.destination as string);
 
       // External-directory check first (mirrors opencode-native edit.ts:68).
@@ -1077,7 +1084,7 @@ function createMoveTool(ctx: PluginContext): ToolDefinition {
       );
 
       const result = await callToolCall(ctx, context, "move", {
-        filePath: args.filePath as string,
+        filePath: (args.path ?? args.filePath) as string,
         destination: args.destination as string,
       });
       if (result.success === false) {
@@ -1127,7 +1134,7 @@ export function hoistedTools(ctx: PluginContext): Record<string, ToolDefinition>
     }
   }
 
-  return tools;
+  return prepareToolMap(tools);
 }
 
 /**
@@ -1233,5 +1240,5 @@ export function aftPrefixedTools(ctx: PluginContext): Record<string, ToolDefinit
     }
   }
 
-  return tools;
+  return prepareToolMap(tools);
 }

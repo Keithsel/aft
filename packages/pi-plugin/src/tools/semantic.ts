@@ -7,7 +7,13 @@
 import type { AgentToolResult, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "typebox";
 import type { PluginContext } from "../types.js";
-import { bridgeFor, callToolCall, isEmptyParam, textResult } from "./_shared.js";
+import {
+  bridgeFor,
+  callToolCall,
+  isEmptyParam,
+  textResult,
+  withPathAliasPreparation,
+} from "./_shared.js";
 import {
   asNumber,
   asRecord,
@@ -190,51 +196,53 @@ export function renderSemanticResult(
 }
 
 export function registerSemanticTool(pi: ExtensionAPI, ctx: PluginContext): void {
-  pi.registerTool({
-    name: "aft_search",
-    label: "search",
-    // Lean and positive on purpose (parity with OpenCode): this is the
-    // primary code-search tool, so the description must not push agents
-    // elsewhere. The old "When NOT to use: ... use grep directly" line fed
-    // the exact bash-grep reflex the system prompt works to suppress.
-    description: [
-      "Search code with one tool: concepts, identifiers, error strings, regex, literals, and filenames are auto-routed to the right engine and returned ranked. For conceptual 'how does X work' queries, phrase a full natural-language sentence — the semantic lane is NL-aware and matches intent against docstrings and comments ('how does the ORM build and execute a query', 'where is rate limiting handled'), not just keywords. Exact names, strings, and regex stay terse ('^export', 'Cargo.lock').",
-      "",
-      "Set hint to 'regex', 'literal', or 'semantic' to force a lane.",
-    ].join("\n"),
-    parameters: SearchParams,
-    async execute(
-      _toolCallId: string,
-      params: Static<typeof SearchParams>,
-      _signal,
-      _onUpdate,
-      extCtx,
-    ) {
-      if (
-        isEmptyParam(params.query) ||
-        typeof params.query !== "string" ||
-        params.query.trim().length === 0
+  pi.registerTool(
+    withPathAliasPreparation({
+      name: "aft_search",
+      label: "search",
+      // Lean and positive on purpose (parity with OpenCode): this is the
+      // primary code-search tool, so the description must not push agents
+      // elsewhere. The old "When NOT to use: ... use grep directly" line fed
+      // the exact bash-grep reflex the system prompt works to suppress.
+      description: [
+        "Search code with one tool: concepts, identifiers, error strings, regex, literals, and filenames are auto-routed to the right engine and returned ranked. For conceptual 'how does X work' queries, phrase a full natural-language sentence — the semantic lane is NL-aware and matches intent against docstrings and comments ('how does the ORM build and execute a query', 'where is rate limiting handled'), not just keywords. Exact names, strings, and regex stay terse ('^export', 'Cargo.lock').",
+        "",
+        "Set hint to 'regex', 'literal', or 'semantic' to force a lane.",
+      ].join("\n"),
+      parameters: SearchParams,
+      async execute(
+        _toolCallId: string,
+        params: Static<typeof SearchParams>,
+        _signal,
+        _onUpdate,
+        extCtx,
       ) {
-        throw new Error("semantic_search: invalid params: `query` must be a non-empty string");
-      }
+        if (
+          isEmptyParam(params.query) ||
+          typeof params.query !== "string" ||
+          params.query.trim().length === 0
+        ) {
+          throw new Error("semantic_search: invalid params: `query` must be a non-empty string");
+        }
 
-      const bridge = bridgeFor(ctx, extCtx.cwd);
-      const req: Record<string, unknown> = { query: params.query };
-      if (params.topK !== undefined) req.topK = params.topK;
-      if (params.hint !== undefined) req.hint = params.hint;
-      if (params.includeTests !== undefined) req.includeTests = params.includeTests;
-      if (params.path !== undefined) req.path = params.path;
-      const response = await callToolCall(bridge, "search", req, extCtx);
-      if (response.success === false) {
-        throw new Error(response.text || response.message || "search failed");
-      }
-      return textResult(response.text, response);
-    },
-    renderCall(args, theme, context) {
-      return renderSemanticCall(args, theme, context);
-    },
-    renderResult(result, _options, theme, context) {
-      return renderSemanticResult(result, context.args, theme, context);
-    },
-  });
+        const bridge = bridgeFor(ctx, extCtx.cwd);
+        const req: Record<string, unknown> = { query: params.query };
+        if (params.topK !== undefined) req.topK = params.topK;
+        if (params.hint !== undefined) req.hint = params.hint;
+        if (params.includeTests !== undefined) req.includeTests = params.includeTests;
+        if (params.path !== undefined) req.path = params.path;
+        const response = await callToolCall(bridge, "search", req, extCtx);
+        if (response.success === false) {
+          throw new Error(response.text || response.message || "search failed");
+        }
+        return textResult(response.text, response);
+      },
+      renderCall(args, theme, context) {
+        return renderSemanticCall(args, theme, context);
+      },
+      renderResult(result, _options, theme, context) {
+        return renderSemanticResult(result, context.args, theme, context);
+      },
+    }),
+  );
 }

@@ -52,7 +52,7 @@ import {
 } from "./lsp-github-install.js";
 import { GITHUB_LSP_TABLE } from "./lsp-github-table.js";
 import { NPM_LSP_TABLE } from "./lsp-npm-table.js";
-import { normalizeToolMap } from "./normalize-schemas.js";
+import { normalizeToolMap, prepareOpenCodeArguments } from "./normalize-schemas.js";
 import {
   cleanupWarnings,
   type NotificationOptions,
@@ -1205,7 +1205,14 @@ async function initializePluginForDirectory(input: Parameters<Plugin>[0]) {
         input.directory;
       void signalBashWaitDetachForProject(pool, sessionDir, sid);
     },
-    "tool.execute.before": async (toolInput: { sessionID?: string }) => {
+    "tool.execute.before": async (
+      toolInput: { tool: string; sessionID?: string },
+      output: { args: unknown },
+    ) => {
+      // OpenCode invokes this hook with raw model arguments before applying the
+      // registered schema. Normalize retired path spellings here so legacy
+      // values are not stripped as unknown properties first.
+      output.args = prepareOpenCodeArguments(toolInput.tool, output.args);
       if (toolInput.sessionID) inspectTier2Idle.clear(toolInput.sessionID);
     },
     "command.execute.before": async (

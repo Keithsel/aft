@@ -7,7 +7,13 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { AgentToolResult, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "typebox";
 import type { PluginContext } from "../types.js";
-import { bridgeFor, callBridge, callToolCall, textResult } from "./_shared.js";
+import {
+  bridgeFor,
+  callBridge,
+  callToolCall,
+  textResult,
+  withPathAliasPreparation,
+} from "./_shared.js";
 import { assertExternalDirectoryPermission, resolvePathArg } from "./hoisted.js";
 import {
   accentPath,
@@ -40,6 +46,11 @@ const SafetyParams = Type.Object({
         "File path (required for history, optional for undo). Absolute or relative to project root.",
     }),
   ),
+  path: Type.Optional(
+    Type.String({
+      description: "Alias for `filePath` — provide one of the two.",
+    }),
+  ),
   name: Type.Optional(
     Type.String({ description: "Checkpoint name (required for checkpoint, restore)" }),
   ),
@@ -67,7 +78,7 @@ export function buildSafetySections(
       ];
     }
     return [
-      `${theme.fg("success", "restored")} ${theme.fg("accent", shortenPath(asString(response.path) ?? args.filePath ?? "(file)"))}`,
+      `${theme.fg("success", "restored")} ${theme.fg("accent", shortenPath(asString(response.path) ?? args.path ?? "(file)"))}`,
       `${theme.fg("muted", "backup")} ${asString(response.backup_id) ?? "—"}`,
     ];
   }
@@ -75,7 +86,7 @@ export function buildSafetySections(
   if (args.op === "history") {
     const entries = asRecords(response.entries);
     const sections = [
-      theme.fg("accent", shortenPath(asString(response.file) ?? args.filePath ?? "(file)")),
+      theme.fg("accent", shortenPath(asString(response.file) ?? args.path ?? "(file)")),
     ];
     if (entries.length === 0) {
       sections.push(theme.fg("muted", "No history entries."));
@@ -139,7 +150,7 @@ export function renderSafetyCall(
   theme: Theme,
   context: RenderContextLike,
 ) {
-  const target = args.filePath ?? args.name;
+  const target = args.path ?? args.filePath ?? args.name;
   const summary = [theme.fg("accent", args.op), target ? accentPath(theme, target) : undefined]
     .filter(Boolean)
     .join(" ");
@@ -161,86 +172,93 @@ export function renderSafetyResult(
 }
 
 export function registerSafetyTool(pi: ExtensionAPI, ctx: PluginContext): void {
-  pi.registerTool({
-    name: "aft_safety",
-    label: "safety",
-    description:
-      "File safety and recovery operations. Ops: `undo` (omit filePath to undo the entire last tool call; pass filePath to pop latest snapshot for one file — irreversible), `history` (list snapshots for a file), `checkpoint` (save named snapshot), `restore` (restore named checkpoint), `list` (list checkpoints). Per-file undo stack is capped at 20.",
-    parameters: SafetyParams,
-    async execute(
-      _toolCallId: string,
-      params: Static<typeof SafetyParams>,
-      _signal,
-      _onUpdate,
-      extCtx,
-    ) {
-      if (params.op === "history" && !params.filePath) {
-        throw new Error(`op='${params.op}' requires 'filePath'`);
-      }
-      if ((params.op === "checkpoint" || params.op === "restore") && !params.name) {
-        throw new Error(`op='${params.op}' requires 'name'`);
-      }
-
-      const filePath = params.filePath
-        ? await resolvePathArg(extCtx.cwd, params.filePath)
-        : undefined;
-      // Coerce at the boundary: a bare-string/JSON-stringified `files` would
-      // otherwise crash the unchecked `.map` below before validation.
-      const fileInputs = coerceStringArray(params.files);
-      const files =
-        fileInputs.length > 0
-          ? await Promise.all(fileInputs.map((file) => resolvePathArg(extCtx.cwd, file)))
-          : undefined;
-      const bridge = bridgeFor(ctx, extCtx.cwd);
-      const restrictToProjectRoot = ctx.config.restrict_to_project_root ?? false;
-
-      if (params.op === "undo") {
-        const previewReq: Record<string, unknown> = {};
-        if (filePath) previewReq.file = filePath;
-        const preview = await callBridge(bridge, "undo_preview", previewReq, extCtx);
-        for (const file of new Set(responsePaths(preview))) {
-          await assertExternalDirectoryPermission(extCtx, file, {
-            restrictToProjectRoot,
-          });
+  pi.registerTool(
+    withPathAliasPreparation({
+      name: "aft_safety",
+      label: "safety",
+      description:
+        "File safety and recovery operations. Ops: `undo` (omit filePath to undo the entire last tool call; pass filePath to pop latest snapshot for one file — irreversible), `history` (list snapshots for a file), `checkpoint` (save named snapshot), `restore` (restore named checkpoint), `list` (list checkpoints). Per-file undo stack is capped at 20.",
+      parameters: SafetyParams,
+      async execute(
+        _toolCallId: string,
+        params: Static<typeof SafetyParams>,
+        _signal,
+        _onUpdate,
+        extCtx,
+      ) {
+        if (params.op === "history" && !params.path) {
+          throw new Error(
+            `op='${params.op}' requires 'path'; requires 'filePath' as the legacy alias`,
+          );
         }
-      }
-      if (params.op === "checkpoint") {
-        const checkpointFiles = files ?? (filePath ? [filePath] : undefined);
-        if (Array.isArray(checkpointFiles)) {
-          const checked = new Set<string>();
-          for (const file of checkpointFiles) {
-            if (checked.has(file)) continue;
-            checked.add(file);
+        if ((params.op === "checkpoint" || params.op === "restore") && !params.name) {
+          throw new Error(`op='${params.op}' requires 'name'`);
+        }
+
+        const filePath = params.path ? await resolvePathArg(extCtx.cwd, params.path) : undefined;
+        // Coerce at the boundary: a bare-string/JSON-stringified `files` would
+        // otherwise crash the unchecked `.map` below before validation.
+        const fileInputs = coerceStringArray(params.files);
+        const files =
+          fileInputs.length > 0
+            ? await Promise.all(fileInputs.map((file) => resolvePathArg(extCtx.cwd, file)))
+            : undefined;
+        const bridge = bridgeFor(ctx, extCtx.cwd);
+        const restrictToProjectRoot = ctx.config.restrict_to_project_root ?? false;
+
+        if (params.op === "undo") {
+          const previewReq: Record<string, unknown> = {};
+          if (filePath) previewReq.file = filePath;
+          const preview = await callBridge(bridge, "undo_preview", previewReq, extCtx);
+          for (const file of new Set(responsePaths(preview))) {
             await assertExternalDirectoryPermission(extCtx, file, {
               restrictToProjectRoot,
             });
           }
         }
-      }
-      if (params.op === "restore" && params.name) {
-        const preview = await callBridge(bridge, "checkpoint_paths", { name: params.name }, extCtx);
-        for (const file of new Set(responsePaths(preview))) {
-          await assertExternalDirectoryPermission(extCtx, file, {
-            restrictToProjectRoot,
-          });
+        if (params.op === "checkpoint") {
+          const checkpointFiles = files ?? (filePath ? [filePath] : undefined);
+          if (Array.isArray(checkpointFiles)) {
+            const checked = new Set<string>();
+            for (const file of checkpointFiles) {
+              if (checked.has(file)) continue;
+              checked.add(file);
+              await assertExternalDirectoryPermission(extCtx, file, {
+                restrictToProjectRoot,
+              });
+            }
+          }
         }
-      }
+        if (params.op === "restore" && params.name) {
+          const preview = await callBridge(
+            bridge,
+            "checkpoint_paths",
+            { name: params.name },
+            extCtx,
+          );
+          for (const file of new Set(responsePaths(preview))) {
+            await assertExternalDirectoryPermission(extCtx, file, {
+              restrictToProjectRoot,
+            });
+          }
+        }
 
-      const rawArgs: Record<string, unknown> = { op: params.op };
-      if (filePath) rawArgs.filePath = filePath;
-      if (params.name) rawArgs.name = params.name;
-      if (files) rawArgs.files = files;
-      const response = await callToolCall(bridge, "safety", rawArgs, extCtx);
-      if (response.success === false) {
-        throw new Error(response.text || response.message || `${params.op} failed`);
-      }
-      return textResult(response.text, response);
-    },
-    renderCall(args, theme, context) {
-      return renderSafetyCall(args, theme, context);
-    },
-    renderResult(result, _options, theme, context) {
-      return renderSafetyResult(result, context.args, theme, context);
-    },
-  });
+        const rawArgs: Record<string, unknown> = { op: params.op };
+        if (filePath) rawArgs.filePath = filePath;
+        if (params.name) rawArgs.name = params.name;
+        if (files) rawArgs.files = files;
+        const response = await callToolCall(bridge, "safety", rawArgs, extCtx);
+        if (response.success === false) {
+          throw new Error(response.text || response.message || `${params.op} failed`);
+        }
+        return textResult(response.text, response);
+      },
+      renderCall(args, theme, context) {
+        return renderSafetyCall(args, theme, context);
+      },
+      renderResult(result, _options, theme, context) {
+        return renderSafetyResult(result, context.args, theme, context);
+      },
+    }),
+  );
 }

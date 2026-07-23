@@ -12,7 +12,14 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "typebox";
 import type { PluginContext } from "../types.js";
-import { bridgeFor, callToolCall, coerceOptionalInt, isEmptyParam, textResult } from "./_shared.js";
+import {
+  bridgeFor,
+  callToolCall,
+  coerceOptionalInt,
+  isEmptyParam,
+  textResult,
+  withPathAliasPreparation,
+} from "./_shared.js";
 import { assertExternalDirectoryPermission, resolvePathArg } from "./hoisted.js";
 import {
   accentPath,
@@ -48,13 +55,21 @@ const OutlineParams = Type.Object({
 });
 
 const ZoomTarget = Type.Object({
-  filePath: Type.String({ description: "Path to file (absolute or project-relative)" }),
+  filePath: Type.Optional(
+    Type.String({ description: "Path to file (absolute or project-relative)" }),
+  ),
+  path: Type.Optional(
+    Type.String({ description: "Alias for `filePath` — provide one of the two." }),
+  ),
   symbol: Type.String({ description: "Symbol name in that file" }),
 });
 
 const ZoomParams = Type.Object({
   filePath: Type.Optional(
     Type.String({ description: "Path to file (absolute or project-relative)" }),
+  ),
+  path: Type.Optional(
+    Type.String({ description: "Alias for `filePath` — provide one of the two." }),
   ),
   url: Type.Optional(
     Type.String({
@@ -64,13 +79,13 @@ const ZoomParams = Type.Object({
   symbols: Type.Optional(
     Type.Union([Type.String(), Type.Array(Type.String())], {
       description:
-        "Symbol name for code, or heading text for Markdown/HTML. Pass a string for one lookup or an array for batched lookups in the same file/URL.",
+        "Symbol name for code, or heading text for Markdown/HTML. Pass a string or array for batched lookups in the same file/URL.",
     }),
   ),
   targets: Type.Optional(
     Type.Union([ZoomTarget, Type.Array(ZoomTarget)], {
       description:
-        "Cross-file batch: `{ filePath, symbol }` or an array of them. Mutually exclusive with filePath/url/symbols.",
+        "Cross-file batch: `{ path, symbol }` or an array of them. Mutually exclusive with path/url/symbols.",
     }),
   ),
   contextLines: Type.Optional(
@@ -104,9 +119,9 @@ async function assertReadPathPermissions(
   }
 }
 
-/** Best-effort label for renderers when zoom is called with `filePath` OR `url`. */
-function zoomTargetLabel(args: { filePath?: string; url?: string }): string {
-  return args.filePath ?? args.url ?? "(no target)";
+/** Best-effort label for renderers when zoom is called with `path` OR `url`. */
+function zoomTargetLabel(args: { path?: string; url?: string }): string {
+  return args.path ?? args.url ?? "(no target)";
 }
 
 export interface ReadingSurface {
@@ -321,149 +336,181 @@ export function registerReadingTools(
   surface: ReadingSurface,
 ): void {
   if (surface.outline) {
-    pi.registerTool({
-      name: "aft_outline",
-      label: "outline",
-      description:
-        "Structural outline of source code, documentation files, or remote URLs. For code, returns symbols (functions, classes, types) with line ranges. For Markdown and HTML, returns heading hierarchy. Use this to explore structure before reading specific sections with aft_zoom. Set `files: true` with a directory target for a flat indexed file tree with language, symbol count, and byte metadata.\n\nFor understanding a specific feature, prefer aft_search + aft_zoom on named symbols; use aft_outline on a whole directory only for high-level structure mapping. aft_zoom with `callgraph:true` gives one-level forward calls-out; use aft_callgraph only for reverse callers or multi-level traces.\n\nPass a single `target`:\n  • file path → outline that file (with signatures)\n  • directory path → outline source files under it (recursively, up to 200 files)\n  • URL (http:// or https://) → fetch and outline a remote HTML/Markdown document\n  • array of paths → outline multiple files in one call; with files:true, every path must be a directory",
-      parameters: OutlineParams,
-      async execute(
-        _toolCallId: string,
-        params: Static<typeof OutlineParams>,
-        _signal,
-        _onUpdate,
-        extCtx,
-      ) {
-        const bridge = bridgeFor(ctx, extCtx.cwd);
-        // Coerce at the boundary: a host may deliver the string|array `target` as
-        // a JSON-stringified array, which would otherwise be treated as one
-        // literal path (coerceTargetParam). And a stringified "true" must enable
-        // files mode (coerceBoolean).
-        const target = coerceTargetParam(params.target);
-        const filesMode = coerceBoolean(params.files);
-        const hasIncludeTests = !isEmptyParam(params.includeTests);
-        const includeTests = coerceBoolean(params.includeTests);
-        const rawArgs: Record<string, unknown> = {
-          target,
-          ...(filesMode ? { files: true } : {}),
-          ...(hasIncludeTests ? { includeTests } : {}),
-        };
+    pi.registerTool(
+      withPathAliasPreparation({
+        name: "aft_outline",
+        label: "outline",
+        description:
+          "Structural outline of source code, documentation files, or remote URLs. For code, returns symbols (functions, classes, types) with line ranges. For Markdown and HTML, returns heading hierarchy. Use this to explore structure before reading specific sections with aft_zoom. Set `files: true` with a directory target for a flat indexed file tree with language, symbol count, and byte metadata.\n\nFor understanding a specific feature, prefer aft_search + aft_zoom on named symbols; use aft_outline on a whole directory only for high-level structure mapping. aft_zoom with `callgraph:true` gives one-level forward calls-out; use aft_callgraph only for reverse callers or multi-level traces.\n\nPass a single `target`:\n  • file path → outline that file (with signatures)\n  • directory path → outline source files under it (recursively, up to 200 files)\n  • URL (http:// or https://) → fetch and outline a remote HTML/Markdown document\n  • array of paths → outline multiple files in one call; with files:true, every path must be a directory",
+        parameters: OutlineParams,
+        async execute(
+          _toolCallId: string,
+          params: Static<typeof OutlineParams>,
+          _signal,
+          _onUpdate,
+          extCtx,
+        ) {
+          const bridge = bridgeFor(ctx, extCtx.cwd);
+          // Coerce at the boundary: a host may deliver the string|array `target` as
+          // a JSON-stringified array, which would otherwise be treated as one
+          // literal path (coerceTargetParam). And a stringified "true" must enable
+          // files mode (coerceBoolean).
+          const target = coerceTargetParam(params.target);
+          const filesMode = coerceBoolean(params.files);
+          const hasIncludeTests = !isEmptyParam(params.includeTests);
+          const includeTests = coerceBoolean(params.includeTests);
+          const rawArgs: Record<string, unknown> = {
+            target,
+            ...(filesMode ? { files: true } : {}),
+            ...(hasIncludeTests ? { includeTests } : {}),
+          };
 
-        if (Array.isArray(target)) {
-          if (target.length === 0) {
-            throw new Error("'target' must be a non-empty string or array of strings");
+          if (Array.isArray(target)) {
+            if (target.length === 0) {
+              throw new Error("'target' must be a non-empty string or array of strings");
+            }
+            const resolvedTargets = await Promise.all(
+              (target as string[]).map((entry) => resolvePathArg(extCtx.cwd, entry)),
+            );
+            await assertReadPathPermissions(extCtx, ctx, resolvedTargets);
+          } else {
+            if (typeof target !== "string" || target.length === 0) {
+              throw new Error("'target' must be a non-empty string or array of strings");
+            }
+            if (!(!filesMode && isUrl(target))) {
+              const resolvedTarget = await resolvePathArg(extCtx.cwd, target);
+              await assertReadPathPermissions(extCtx, ctx, resolvedTarget);
+            }
           }
-          const resolvedTargets = await Promise.all(
-            (target as string[]).map((entry) => resolvePathArg(extCtx.cwd, entry)),
-          );
-          await assertReadPathPermissions(extCtx, ctx, resolvedTargets);
-        } else {
-          if (typeof target !== "string" || target.length === 0) {
-            throw new Error("'target' must be a non-empty string or array of strings");
-          }
-          if (!(!filesMode && isUrl(target))) {
-            const resolvedTarget = await resolvePathArg(extCtx.cwd, target);
-            await assertReadPathPermissions(extCtx, ctx, resolvedTarget);
-          }
-        }
 
-        const response = await callToolCall(bridge, "outline", rawArgs, extCtx);
-        if (response.success === false) {
-          throw new Error(response.text || response.message || "outline failed");
-        }
-        return textResult(response.text, response);
-      },
-      renderCall(args, theme, context) {
-        return renderOutlineCall(args, theme, context);
-      },
-      renderResult(result, _options, theme, context) {
-        return renderOutlineResult(result, theme, context);
-      },
-    });
+          const response = await callToolCall(bridge, "outline", rawArgs, extCtx);
+          if (response.success === false) {
+            throw new Error(response.text || response.message || "outline failed");
+          }
+          return textResult(response.text, response);
+        },
+        renderCall(args, theme, context) {
+          return renderOutlineCall(args, theme, context);
+        },
+        renderResult(result, _options, theme, context) {
+          return renderOutlineResult(result, theme, context);
+        },
+      }),
+    );
   }
 
   if (surface.zoom) {
-    pi.registerTool({
-      name: "aft_zoom",
-      label: "zoom",
-      description:
-        "Inspect code symbols or documentation sections. For code, returns the full source of a symbol. Pass `callgraph: true` to also include call-graph annotations (calls-out / called-by within the same file). For Markdown and HTML, returns the section content under the given heading.\n\nUse exactly ONE mode: `{ filePath, symbols }`, `{ url, symbols }`, or `{ targets }`. `symbols` can be a string or array (one or many lookups in the same file/URL). Use `targets` for cross-file batches: `{ filePath, symbol }` or an array of them.",
-      parameters: ZoomParams,
-      async execute(
-        _toolCallId: string,
-        params: Static<typeof ZoomParams>,
-        _signal,
-        _onUpdate,
-        extCtx,
-      ) {
-        const bridge = bridgeFor(ctx, extCtx.cwd);
-        // GPT-family models send empty strings / empty arrays / empty objects
-        // instead of omitting optional params. Use `isEmptyParam` so e.g.
-        // `targets: []` or `url: ""` don't trigger mutual-exclusion errors
-        // against fields the agent didn't actually intend to provide.
-        // `targets` also accepts nested object/array shapes. Only treat
-        // `targets` as not-provided when EVERY entry is fully empty
-        // (`[{filePath: "", symbol: ""}]`, `{filePath: "", symbol: ""}`)
-        // — that's the GPT-class "I didn't intend this param" signal.
-        // If any entry has even one non-empty field, the agent intends
-        // targets mode; let the per-entry validation below surface the
-        // specific error ("targets[0].filePath must be non-empty" etc).
-        const hasTargetsProvided = (t: unknown): boolean => {
-          if (isEmptyParam(t)) return false;
-          const entryEmpty = (entry: unknown): boolean => {
-            if (!entry || typeof entry !== "object") return true;
-            const fp = (entry as { filePath?: unknown }).filePath;
-            const sym = (entry as { symbol?: unknown }).symbol;
-            const fpEmpty = typeof fp !== "string" || fp.length === 0;
-            const symEmpty = typeof sym !== "string" || sym.length === 0;
-            return fpEmpty && symEmpty;
+    pi.registerTool(
+      withPathAliasPreparation({
+        name: "aft_zoom",
+        label: "zoom",
+        description:
+          "Inspect code symbols or documentation sections. For code, returns the full source of a symbol. Pass `callgraph: true` to also include call-graph annotations (calls-out / called-by within the same file). For Markdown and HTML, returns the section content under the given heading.\n\nUse exactly ONE mode: `{ path, symbols }`, `{ url, symbols }`, or `{ targets }`. `symbols` can be a string or array (one or many lookups in the same file/URL). Use `targets` for cross-file batches: `{ path, symbol }` or an array of them.",
+        parameters: ZoomParams,
+        async execute(
+          _toolCallId: string,
+          params: Static<typeof ZoomParams>,
+          _signal,
+          _onUpdate,
+          extCtx,
+        ) {
+          const bridge = bridgeFor(ctx, extCtx.cwd);
+          // GPT-family models send empty strings / empty arrays / empty objects
+          // instead of omitting optional params. Use `isEmptyParam` so e.g.
+          // `targets: []` or `url: ""` don't trigger mutual-exclusion errors
+          // against fields the agent didn't actually intend to provide.
+          // `targets` also accepts nested object/array shapes. Only treat
+          // `targets` as not-provided when EVERY entry is fully empty
+          // (`[{path: "", symbol: ""}]`, `{path: "", symbol: ""}`)
+          // — that's the GPT-class "I didn't intend this param" signal.
+          // If any entry has even one non-empty field, the agent intends
+          // targets mode; let the per-entry validation below surface the
+          // specific error ("targets[0].path must be non-empty" etc).
+          const hasTargetsProvided = (t: unknown): boolean => {
+            if (isEmptyParam(t)) return false;
+            const entryEmpty = (entry: unknown): boolean => {
+              if (!entry || typeof entry !== "object") return true;
+              const fp = (entry as { path?: unknown }).path;
+              const sym = (entry as { symbol?: unknown }).symbol;
+              const fpEmpty = typeof fp !== "string" || fp.length === 0;
+              const symEmpty = typeof sym !== "string" || sym.length === 0;
+              return fpEmpty && symEmpty;
+            };
+            if (Array.isArray(t)) return !t.every(entryEmpty);
+            return !entryEmpty(t);
           };
-          if (Array.isArray(t)) return !t.every(entryEmpty);
-          return !entryEmpty(t);
-        };
-        const hasFilePath = !isEmptyParam(params.filePath);
-        const hasUrl = !isEmptyParam(params.url);
-        const hasTargets = hasTargetsProvided(params.targets);
-        const hasSymbols = !isEmptyParam(params.symbols);
-        // Coerce stringified booleans and numbers here so they reach the server
-        // in the same form the main client sends.
-        const wantCallgraph = coerceBoolean(params.callgraph);
-        const contextLines = coerceOptionalInt(
-          params.contextLines,
-          "contextLines",
-          1,
-          Number.MAX_SAFE_INTEGER,
-        );
-
-        // Multi-target mode (cross-file). Mutually exclusive with the other
-        // modes so the agent doesn't accidentally provide overlapping inputs
-        // that get silently ignored.
-        if (hasTargets) {
-          if (hasFilePath || hasUrl || hasSymbols) {
-            throw new Error(
-              "'targets' is mutually exclusive with 'filePath', 'url', and 'symbols'",
-            );
-          }
-          const targets = Array.isArray(params.targets)
-            ? (params.targets as Array<{ filePath: string; symbol: string }>)
-            : ([params.targets] as Array<{ filePath: string; symbol: string }>);
-          if (targets.length === 0) {
-            throw new Error("'targets' must be a non-empty object or array");
-          }
-          for (const [i, entry] of targets.entries()) {
-            if (!entry || typeof entry.filePath !== "string" || entry.filePath.length === 0) {
-              throw new Error(`targets[${i}].filePath must be a non-empty string`);
-            }
-            if (typeof entry.symbol !== "string" || entry.symbol.length === 0) {
-              throw new Error(`targets[${i}].symbol must be a non-empty string`);
-            }
-          }
-          const resolvedTargets = await Promise.all(
-            targets.map((t) => resolvePathArg(extCtx.cwd, t.filePath)),
+          const hasPath = !isEmptyParam(params.path);
+          const hasUrl = !isEmptyParam(params.url);
+          const hasTargets = hasTargetsProvided(params.targets);
+          const hasSymbols = !isEmptyParam(params.symbols);
+          // Coerce stringified booleans and numbers here so they reach the server
+          // in the same form the main client sends.
+          const wantCallgraph = coerceBoolean(params.callgraph);
+          const contextLines = coerceOptionalInt(
+            params.contextLines,
+            "contextLines",
+            1,
+            Number.MAX_SAFE_INTEGER,
           );
-          await assertReadPathPermissions(extCtx, ctx, resolvedTargets);
 
-          const rawArgs: Record<string, unknown> = { targets };
+          // Multi-target mode (cross-file). Mutually exclusive with the other
+          // modes so the agent doesn't accidentally provide overlapping inputs
+          // that get silently ignored.
+          if (hasTargets) {
+            if (hasPath || hasUrl || hasSymbols) {
+              throw new Error("'targets' is mutually exclusive with 'path', 'url', and 'symbols'");
+            }
+            const targets = Array.isArray(params.targets)
+              ? (params.targets as Array<{ path: string; symbol: string }>)
+              : ([params.targets] as Array<{ path: string; symbol: string }>);
+            if (targets.length === 0) {
+              throw new Error("'targets' must be a non-empty object or array");
+            }
+            for (const [i, entry] of targets.entries()) {
+              if (!entry || typeof entry.path !== "string" || entry.path.length === 0) {
+                throw new Error(`targets[${i}].path must be a non-empty string`);
+              }
+              if (typeof entry.symbol !== "string" || entry.symbol.length === 0) {
+                throw new Error(`targets[${i}].symbol must be a non-empty string`);
+              }
+            }
+            const resolvedTargets = await Promise.all(
+              targets.map((t) => resolvePathArg(extCtx.cwd, t.path)),
+            );
+            await assertReadPathPermissions(extCtx, ctx, resolvedTargets);
+
+            const rawArgs: Record<string, unknown> = {
+              targets: targets.map((target) => ({ filePath: target.path, symbol: target.symbol })),
+            };
+            if (contextLines !== undefined) rawArgs.contextLines = contextLines;
+            if (wantCallgraph) rawArgs.callgraph = true;
+
+            const response = await callToolCall(bridge, "zoom", rawArgs, extCtx);
+            if (response.success === false) {
+              throw new Error(response.text || response.message || "zoom failed");
+            }
+            return textResult(response.text, response);
+          }
+
+          if (!hasPath && !hasUrl) {
+            throw new Error("Provide exactly one of 'path', 'url', or 'targets'");
+          }
+          if (hasPath && hasUrl) {
+            throw new Error("Provide exactly ONE of 'path' or 'url' — not both");
+          }
+
+          // URL mode passes through to Rust; Rust fetches, validates, and caches.
+          // File mode still resolves locally before dispatch so external-directory
+          // permission checks approve the same path the server will read.
+          if (!hasUrl) {
+            const file = await resolvePathArg(extCtx.cwd, params.path as string);
+            await assertReadPathPermissions(extCtx, ctx, file);
+          }
+
+          const rawArgs: Record<string, unknown> = hasUrl
+            ? { url: params.url }
+            : { filePath: params.path };
+          if (hasSymbols) rawArgs.symbols = params.symbols;
           if (contextLines !== undefined) rawArgs.contextLines = contextLines;
           if (wantCallgraph) rawArgs.callgraph = true;
 
@@ -472,42 +519,14 @@ export function registerReadingTools(
             throw new Error(response.text || response.message || "zoom failed");
           }
           return textResult(response.text, response);
-        }
-
-        if (!hasFilePath && !hasUrl) {
-          throw new Error("Provide exactly one of 'filePath', 'url', or 'targets'");
-        }
-        if (hasFilePath && hasUrl) {
-          throw new Error("Provide exactly ONE of 'filePath' or 'url' — not both");
-        }
-
-        // URL mode passes through to Rust; Rust fetches, validates, and caches.
-        // File mode still resolves locally before dispatch so external-directory
-        // permission checks approve the same path the server will read.
-        if (!hasUrl) {
-          const file = await resolvePathArg(extCtx.cwd, params.filePath as string);
-          await assertReadPathPermissions(extCtx, ctx, file);
-        }
-
-        const rawArgs: Record<string, unknown> = hasUrl
-          ? { url: params.url }
-          : { filePath: params.filePath };
-        if (hasSymbols) rawArgs.symbols = params.symbols;
-        if (contextLines !== undefined) rawArgs.contextLines = contextLines;
-        if (wantCallgraph) rawArgs.callgraph = true;
-
-        const response = await callToolCall(bridge, "zoom", rawArgs, extCtx);
-        if (response.success === false) {
-          throw new Error(response.text || response.message || "zoom failed");
-        }
-        return textResult(response.text, response);
-      },
-      renderCall(args, theme, context) {
-        return renderZoomCall(args, theme, context);
-      },
-      renderResult(result, _options, theme, context) {
-        return renderZoomResult(result, context.args, theme, context);
-      },
-    });
+        },
+        renderCall(args, theme, context) {
+          return renderZoomCall(args, theme, context);
+        },
+        renderResult(result, _options, theme, context) {
+          return renderZoomResult(result, context.args, theme, context);
+        },
+      }),
+    );
   }
 }

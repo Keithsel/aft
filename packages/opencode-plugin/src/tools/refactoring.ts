@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { queryLspHints } from "../lsp.js";
+import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import {
   callToolCall,
@@ -24,7 +25,7 @@ const z = tool.schema;
  * Tool definitions for refactoring commands: move_symbol, extract_function, inline_symbol.
  */
 export function refactoringTools(ctx: PluginContext): Record<string, ToolDefinition> {
-  return {
+  return prepareToolMap({
     aft_refactor: {
       // Per-op parameter requirements live on the param descriptions — the
       // tool description names the ops and their one defining behavior each.
@@ -105,7 +106,7 @@ export function refactoringTools(ctx: PluginContext): Record<string, ToolDefinit
           throw new Error("'callSiteLine' is required for 'inline' op");
         }
 
-        const filePath = await resolvePathArg(ctx, context, args.filePath as string);
+        const filePath = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
         const destination =
           op === "move"
             ? await resolvePathArg(ctx, context, args.destination as string)
@@ -175,5 +176,5 @@ export function refactoringTools(ctx: PluginContext): Record<string, ToolDefinit
         return response.text;
       },
     },
-  };
+  });
 }

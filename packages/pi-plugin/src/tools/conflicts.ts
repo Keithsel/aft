@@ -5,7 +5,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { PluginContext } from "../types.js";
-import { bridgeFor, callToolCall, textResult } from "./_shared.js";
+import { bridgeFor, callToolCall, textResult, withPathAliasPreparation } from "./_shared.js";
 import { assertExternalDirectoryPermission, resolvePathArg } from "./hoisted.js";
 import {
   collectTextContent,
@@ -73,36 +73,38 @@ export function renderConflictToolResult(
 }
 
 export function registerConflictsTool(pi: ExtensionAPI, ctx: PluginContext): void {
-  pi.registerTool({
-    name: "aft_conflicts",
-    label: "conflicts",
-    description:
-      "Show all git merge conflicts across the repository — returns line-numbered conflict regions with context for every conflicted file in a single call.",
-    parameters: ConflictsParams,
-    async execute(_toolCallId: string, params, _signal, _onUpdate, extCtx) {
-      const bridge = bridgeFor(ctx, extCtx.cwd);
-      const reqParams: Record<string, unknown> = {};
-      const path = (params as { path?: unknown })?.path;
-      if (typeof path === "string" && path.trim() !== "") {
-        // Gate the repo/worktree path like Pi's other path-taking tools (only
-        // prompts when restrict_to_project_root is true), and resolve tilde/
-        // relative the same way Rust will.
-        await assertExternalDirectoryPermission(extCtx, path, {
-          restrictToProjectRoot: ctx.config.restrict_to_project_root ?? false,
-        });
-        reqParams.path = await resolvePathArg(extCtx.cwd, path);
-      }
-      const response = await callToolCall(bridge, "conflicts", reqParams, extCtx);
-      if (response.success === false) {
-        throw new Error(response.text || response.message || "conflicts failed");
-      }
-      return textResult(response.text, response);
-    },
-    renderCall(_args, theme, context) {
-      return renderConflictCall(theme, context);
-    },
-    renderResult(result, _options, theme, context) {
-      return renderConflictToolResult(result, theme, context);
-    },
-  });
+  pi.registerTool(
+    withPathAliasPreparation({
+      name: "aft_conflicts",
+      label: "conflicts",
+      description:
+        "Show all git merge conflicts across the repository — returns line-numbered conflict regions with context for every conflicted file in a single call.",
+      parameters: ConflictsParams,
+      async execute(_toolCallId: string, params, _signal, _onUpdate, extCtx) {
+        const bridge = bridgeFor(ctx, extCtx.cwd);
+        const reqParams: Record<string, unknown> = {};
+        const path = (params as { path?: unknown })?.path;
+        if (typeof path === "string" && path.trim() !== "") {
+          // Gate the repo/worktree path like Pi's other path-taking tools (only
+          // prompts when restrict_to_project_root is true), and resolve tilde/
+          // relative the same way Rust will.
+          await assertExternalDirectoryPermission(extCtx, path, {
+            restrictToProjectRoot: ctx.config.restrict_to_project_root ?? false,
+          });
+          reqParams.path = await resolvePathArg(extCtx.cwd, path);
+        }
+        const response = await callToolCall(bridge, "conflicts", reqParams, extCtx);
+        if (response.success === false) {
+          throw new Error(response.text || response.message || "conflicts failed");
+        }
+        return textResult(response.text, response);
+      },
+      renderCall(_args, theme, context) {
+        return renderConflictCall(theme, context);
+      },
+      renderResult(result, _options, theme, context) {
+        return renderConflictToolResult(result, theme, context);
+      },
+    }),
+  );
 }

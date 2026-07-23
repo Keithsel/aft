@@ -43,6 +43,7 @@ import {
   contentResult,
   optionalInt,
   textResult,
+  withPathAliasPreparation,
 } from "./_shared.js";
 import { formatDiffForPi } from "./diff-format.js";
 
@@ -483,75 +484,77 @@ export function registerHoistedTools(
   surface: ToolSurfaceFlags,
 ): void {
   if (surface.hoistRead) {
-    pi.registerTool({
-      name: "read",
-      label: "read",
-      description:
-        "Read file contents with line numbers. Backed by AFT's indexed Rust reader — faster than the built-in `read` on large repos. Images are returned as attachments on vision-capable models; PDFs and non-vision models are not yet supported.",
-      promptSnippet: "Read file contents (supports offset/limit for large files)",
-      promptGuidelines: ["Use read to examine files instead of cat or sed."],
-      parameters: ReadParams,
-      async execute(
-        _toolCallId: string,
-        params: Static<typeof ReadParams>,
-        _signal,
-        _onUpdate,
-        extCtx,
-      ) {
-        const bridge = bridgeFor(ctx, extCtx.cwd);
-        const pathArg = readPathArg(params);
-        if (typeof pathArg !== "string") {
-          throw new Error("read: missing required parameter `path`");
-        }
-        const offset = coerceOptionalInt(params.offset, "offset", 1, Number.MAX_SAFE_INTEGER);
-        const limit = coerceOptionalInt(params.limit, "limit", 1, Number.MAX_SAFE_INTEGER);
-        // Resolve ~ / relative once and use the same value for the permission
-        // check and the bridge. Without this, hoisted read bypassed Pi's
-        // external-path prompt/deny layer while write/edit/grep were guarded.
-        const filePath = await resolvePathArg(extCtx.cwd, pathArg);
-        await assertExternalDirectoryPermission(extCtx, filePath, {
-          restrictToProjectRoot: surface.restrictToProjectRoot,
-          serverValidatedRead: true,
-        });
-        const rawArgs: Record<string, unknown> = { filePath: pathArg };
-        if (offset !== undefined) rawArgs.offset = offset;
-        if (limit !== undefined) rawArgs.limit = limit;
-        const response = await callToolCall(bridge, "read", rawArgs, extCtx);
-        if (response.success === false) {
-          throw new Error(response.text || response.message || "read failed");
-        }
-        const agentText = response.text;
-        const attachments = readAttachments(response);
-        if (attachments.length > 0) {
-          const first = attachments[0];
-          const mime = typeof first.mime === "string" ? first.mime : "";
-          const note =
-            typeof agentText === "string" && agentText.length > 0
-              ? agentText
-              : formatReadAttachmentText(first);
-          if (first.kind === "image" || mime.startsWith("image/")) {
-            if (typeof first.data === "string" && modelSupportsImages(extCtx)) {
-              return contentResult(
-                [
-                  { type: "text", text: note },
-                  { type: "image", data: first.data, mimeType: mime },
-                ],
-                response,
-              );
+    pi.registerTool(
+      withPathAliasPreparation({
+        name: "read",
+        label: "read",
+        description:
+          "Read file contents with line numbers. Backed by AFT's indexed Rust reader — faster than the built-in `read` on large repos. Images are returned as attachments on vision-capable models; PDFs and non-vision models are not yet supported.",
+        promptSnippet: "Read file contents (supports offset/limit for large files)",
+        promptGuidelines: ["Use read to examine files instead of cat or sed."],
+        parameters: ReadParams,
+        async execute(
+          _toolCallId: string,
+          params: Static<typeof ReadParams>,
+          _signal,
+          _onUpdate,
+          extCtx,
+        ) {
+          const bridge = bridgeFor(ctx, extCtx.cwd);
+          const pathArg = readPathArg(params);
+          if (typeof pathArg !== "string") {
+            throw new Error("read: missing required parameter `path`");
+          }
+          const offset = coerceOptionalInt(params.offset, "offset", 1, Number.MAX_SAFE_INTEGER);
+          const limit = coerceOptionalInt(params.limit, "limit", 1, Number.MAX_SAFE_INTEGER);
+          // Resolve ~ / relative once and use the same value for the permission
+          // check and the bridge. Without this, hoisted read bypassed Pi's
+          // external-path prompt/deny layer while write/edit/grep were guarded.
+          const filePath = await resolvePathArg(extCtx.cwd, pathArg);
+          await assertExternalDirectoryPermission(extCtx, filePath, {
+            restrictToProjectRoot: surface.restrictToProjectRoot,
+            serverValidatedRead: true,
+          });
+          const rawArgs: Record<string, unknown> = { filePath: pathArg };
+          if (offset !== undefined) rawArgs.offset = offset;
+          if (limit !== undefined) rawArgs.limit = limit;
+          const response = await callToolCall(bridge, "read", rawArgs, extCtx);
+          if (response.success === false) {
+            throw new Error(response.text || response.message || "read failed");
+          }
+          const agentText = response.text;
+          const attachments = readAttachments(response);
+          if (attachments.length > 0) {
+            const first = attachments[0];
+            const mime = typeof first.mime === "string" ? first.mime : "";
+            const note =
+              typeof agentText === "string" && agentText.length > 0
+                ? agentText
+                : formatReadAttachmentText(first);
+            if (first.kind === "image" || mime.startsWith("image/")) {
+              if (typeof first.data === "string" && modelSupportsImages(extCtx)) {
+                return contentResult(
+                  [
+                    { type: "text", text: note },
+                    { type: "image", data: first.data, mimeType: mime },
+                  ],
+                  response,
+                );
+              }
+              return textResult(`${note}\n${NON_VISION_IMAGE_NOTE}`, response);
             }
-            return textResult(`${note}\n${NON_VISION_IMAGE_NOTE}`, response);
+            if (first.kind === "pdf" || mime === "application/pdf") {
+              return textResult(`${note}\nPDFs aren't supported on the Pi harness yet.`, response);
+            }
+            return textResult(note, response);
           }
-          if (first.kind === "pdf" || mime === "application/pdf") {
-            return textResult(`${note}\nPDFs aren't supported on the Pi harness yet.`, response);
-          }
-          return textResult(note, response);
-        }
-        return textResult(agentText, response);
-      },
-      renderCall(args, theme, context) {
-        return renderReadCall(args, theme, context);
-      },
-    });
+          return textResult(agentText, response);
+        },
+        renderCall(args, theme, context) {
+          return renderReadCall(args, theme, context);
+        },
+      }),
+    );
   }
 
   if (surface.hoistWrite) {
@@ -559,185 +562,192 @@ export function registerHoistedTools(
       ctx.config.backup?.enabled === false
         ? "Backup capture is disabled by user config."
         : "Existing files are backed up before overwriting (undo via aft_safety).";
-    pi.registerTool<typeof WriteParams, FileMutationDetails>({
-      name: "write",
-      label: "write",
-      description: `Write content to a file, creating it and parent directories automatically. ${writeBackupText} Auto-formats when the project has a formatter configured. Uses \`filePath\` (not \`path\`). For partial edits, use the \`edit\` tool.`,
-      promptSnippet: "Create or overwrite files (uses filePath; auto-formats)",
-      promptGuidelines: ["Use write only for new files or complete rewrites."],
-      parameters: WriteParams,
-      async execute(
-        _toolCallId: string,
-        params: Static<typeof WriteParams>,
-        _signal,
-        _onUpdate,
-        extCtx,
-      ) {
-        const filePathArg = mutationFilePathArg(params);
-        if (typeof filePathArg !== "string") {
-          throw new Error("write: missing required parameter `filePath`");
-        }
-        // Resolve ~ and relative paths before the permission check. Pass the
-        // original filePath string in the request so the path the agent
-        // receives stays exactly as provided.
-        const filePath = await resolvePathArg(extCtx.cwd, filePathArg);
-        await assertExternalDirectoryPermission(extCtx, filePath, {
-          restrictToProjectRoot: surface.restrictToProjectRoot,
-        });
-        const bridge = bridgeFor(ctx, extCtx.cwd);
-        const rawArgs: Record<string, unknown> = {
-          filePath: filePathArg,
-          content: params.content,
-        };
-        const response = await callToolCall(bridge, "write", rawArgs, extCtx);
-        if (response.success === false) {
-          throw new Error(response.text || response.message || "write failed");
-        }
-        return buildMutationResult(response);
-      },
-      renderCall(args, theme, context) {
-        return renderMutationCall("write", mutationFilePathArg(args ?? {}), theme, context);
-      },
-      renderResult(result, _options, theme, context) {
-        return renderMutationResult(result, theme, context);
-      },
-    });
+    pi.registerTool<typeof WriteParams, FileMutationDetails>(
+      withPathAliasPreparation({
+        name: "write",
+        label: "write",
+        description: `Write content to a file, creating it and parent directories automatically. ${writeBackupText} Auto-formats when the project has a formatter configured. Uses \`filePath\` (not \`path\`). For partial edits, use the \`edit\` tool.`,
+        promptSnippet: "Create or overwrite files (uses filePath; auto-formats)",
+        promptGuidelines: ["Use write only for new files or complete rewrites."],
+        parameters: WriteParams,
+        async execute(
+          _toolCallId: string,
+          params: Static<typeof WriteParams>,
+          _signal,
+          _onUpdate,
+          extCtx,
+        ) {
+          const filePathArg = mutationFilePathArg(params);
+          if (typeof filePathArg !== "string") {
+            throw new Error("write: missing required parameter `filePath`");
+          }
+          // Resolve ~ and relative paths before the permission check. Pass the
+          // original filePath string in the request so the path the agent
+          // receives stays exactly as provided.
+          const filePath = await resolvePathArg(extCtx.cwd, filePathArg);
+          await assertExternalDirectoryPermission(extCtx, filePath, {
+            restrictToProjectRoot: surface.restrictToProjectRoot,
+          });
+          const bridge = bridgeFor(ctx, extCtx.cwd);
+          const rawArgs: Record<string, unknown> = {
+            filePath: filePathArg,
+            content: params.content,
+          };
+          const response = await callToolCall(bridge, "write", rawArgs, extCtx);
+          if (response.success === false) {
+            throw new Error(response.text || response.message || "write failed");
+          }
+          return buildMutationResult(response);
+        },
+        renderCall(args, theme, context) {
+          return renderMutationCall("write", mutationFilePathArg(args ?? {}), theme, context);
+        },
+        renderResult(result, _options, theme, context) {
+          return renderMutationResult(result, theme, context);
+        },
+      }),
+    );
   }
 
   if (surface.hoistEdit) {
-    pi.registerTool<typeof EditParams, FileMutationDetails>({
-      name: "edit",
-      label: "edit",
-      description:
-        "Edit part of a file via `appendContent`, batch `edits[]`, or `oldString`/`newString` find-and-replace. Batch `{ oldString, newString, replaceAll: true }` replaces every match. Mode priority: appendContent > edits > oldString.",
-      promptSnippet:
-        "Partial file edits via appendContent, edits[], or oldString/newString (mode priority: appendContent > edits > oldString).",
-      promptGuidelines: [
-        "Prefer edit over write when changing part of an existing file.",
-        "Use appendContent when adding text to the end of a file.",
-        "Use edits[] for multiple atomic changes in one file.",
-        "Include enough surrounding context in oldString to make the match unique, or set replaceAll/occurrence explicitly.",
-      ],
-      parameters: EditParams,
-      async execute(
-        _toolCallId: string,
-        params: Static<typeof EditParams>,
-        _signal,
-        _onUpdate,
-        extCtx,
-      ) {
-        const argsRecord = params as Record<string, unknown>;
-        if (argsRecord.startLine !== undefined || argsRecord.endLine !== undefined) {
-          throw new Error(
-            "edit: 'startLine'/'endLine' are not top-level parameters. " +
-              "For line-range edits, nest them inside the `edits` array: " +
-              '`edits: [{ startLine: N, endLine: M, content: "..." }]`. ' +
-              "For find/replace, use `oldString`/`newString` instead.",
-          );
-        }
+    pi.registerTool<typeof EditParams, FileMutationDetails>(
+      withPathAliasPreparation({
+        name: "edit",
+        label: "edit",
+        description:
+          "Edit part of a file via `appendContent`, batch `edits[]`, or `oldString`/`newString` find-and-replace. Batch `{ oldString, newString, replaceAll: true }` replaces every match. Mode priority: appendContent > edits > oldString.",
+        promptSnippet:
+          "Partial file edits via appendContent, edits[], or oldString/newString (mode priority: appendContent > edits > oldString).",
+        promptGuidelines: [
+          "Prefer edit over write when changing part of an existing file.",
+          "Use appendContent when adding text to the end of a file.",
+          "Use edits[] for multiple atomic changes in one file.",
+          "Include enough surrounding context in oldString to make the match unique, or set replaceAll/occurrence explicitly.",
+        ],
+        parameters: EditParams,
+        async execute(
+          _toolCallId: string,
+          params: Static<typeof EditParams>,
+          _signal,
+          _onUpdate,
+          extCtx,
+        ) {
+          const argsRecord = params as Record<string, unknown>;
+          if (argsRecord.startLine !== undefined || argsRecord.endLine !== undefined) {
+            throw new Error(
+              "edit: 'startLine'/'endLine' are not top-level parameters. " +
+                "For line-range edits, nest them inside the `edits` array: " +
+                '`edits: [{ startLine: N, endLine: M, content: "..." }]`. ' +
+                "For find/replace, use `oldString`/`newString` instead.",
+            );
+          }
 
-        const filePathArg = mutationFilePathArg(params);
-        if (typeof filePathArg !== "string") {
-          throw new Error("edit: missing required parameter `filePath`");
-        }
-        if (params.appendContent === undefined) validateBatchEdits(params.edits);
-        // Resolve ~ and relative paths before the permission check. Pass the
-        // original filePath string in the request so the path the agent
-        // receives stays exactly as provided.
-        const filePath = await resolvePathArg(extCtx.cwd, filePathArg);
-        await assertExternalDirectoryPermission(extCtx, filePath, {
-          restrictToProjectRoot: surface.restrictToProjectRoot,
-        });
-        const bridge = bridgeFor(ctx, extCtx.cwd);
-        const rawArgs: Record<string, unknown> = { filePath: filePathArg };
-        for (const key of ["appendContent", "oldString", "newString"] as const) {
-          if (argsRecord[key] !== undefined) rawArgs[key] = argsRecord[key];
-        }
-        if (Array.isArray(argsRecord.edits)) {
-          rawArgs.edits = argsRecord.edits.map((item) => {
-            if (!item || typeof item !== "object" || Array.isArray(item)) return item;
-            const batchItem = item as Record<string, unknown>;
-            return batchItem.replaceAll === undefined
-              ? batchItem
-              : { ...batchItem, replaceAll: coerceBoolean(batchItem.replaceAll) };
+          const filePathArg = mutationFilePathArg(params);
+          if (typeof filePathArg !== "string") {
+            throw new Error("edit: missing required parameter `filePath`");
+          }
+          if (params.appendContent === undefined) validateBatchEdits(params.edits);
+          // Resolve ~ and relative paths before the permission check. Pass the
+          // original filePath string in the request so the path the agent
+          // receives stays exactly as provided.
+          const filePath = await resolvePathArg(extCtx.cwd, filePathArg);
+          await assertExternalDirectoryPermission(extCtx, filePath, {
+            restrictToProjectRoot: surface.restrictToProjectRoot,
           });
-        } else if (argsRecord.edits !== undefined) {
-          rawArgs.edits = argsRecord.edits;
-        }
-        // Coerce at the boundary: stringified replaceAll must forward true (coerceBoolean).
-        if (params.replaceAll !== undefined) rawArgs.replaceAll = coerceBoolean(params.replaceAll);
-        const occurrence = coerceOptionalInt(
-          params.occurrence,
-          "occurrence",
-          0,
-          Number.MAX_SAFE_INTEGER,
-        );
-        if (occurrence !== undefined) rawArgs.occurrence = occurrence;
+          const bridge = bridgeFor(ctx, extCtx.cwd);
+          const rawArgs: Record<string, unknown> = { filePath: filePathArg };
+          for (const key of ["appendContent", "oldString", "newString"] as const) {
+            if (argsRecord[key] !== undefined) rawArgs[key] = argsRecord[key];
+          }
+          if (Array.isArray(argsRecord.edits)) {
+            rawArgs.edits = argsRecord.edits.map((item) => {
+              if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+              const batchItem = item as Record<string, unknown>;
+              return batchItem.replaceAll === undefined
+                ? batchItem
+                : { ...batchItem, replaceAll: coerceBoolean(batchItem.replaceAll) };
+            });
+          } else if (argsRecord.edits !== undefined) {
+            rawArgs.edits = argsRecord.edits;
+          }
+          // Coerce at the boundary: stringified replaceAll must forward true (coerceBoolean).
+          if (params.replaceAll !== undefined)
+            rawArgs.replaceAll = coerceBoolean(params.replaceAll);
+          const occurrence = coerceOptionalInt(
+            params.occurrence,
+            "occurrence",
+            0,
+            Number.MAX_SAFE_INTEGER,
+          );
+          if (occurrence !== undefined) rawArgs.occurrence = occurrence;
 
-        const response = await callToolCall(bridge, "edit", rawArgs, extCtx);
-        if (response.success === false) {
-          throw new Error(response.text || response.message || "edit failed");
-        }
-        return buildMutationResult(response);
-      },
-      renderCall(args, theme, context) {
-        return renderMutationCall("edit", mutationFilePathArg(args ?? {}), theme, context);
-      },
-      renderResult(result, _options, theme, context) {
-        return renderMutationResult(result, theme, context);
-      },
-    });
+          const response = await callToolCall(bridge, "edit", rawArgs, extCtx);
+          if (response.success === false) {
+            throw new Error(response.text || response.message || "edit failed");
+          }
+          return buildMutationResult(response);
+        },
+        renderCall(args, theme, context) {
+          return renderMutationCall("edit", mutationFilePathArg(args ?? {}), theme, context);
+        },
+        renderResult(result, _options, theme, context) {
+          return renderMutationResult(result, theme, context);
+        },
+      }),
+    );
   }
 
   if (surface.hoistGrep) {
-    pi.registerTool({
-      name: "grep",
-      label: "grep",
-      description:
-        "Search for a regex pattern across files. Uses AFT's trigram index inside the project root for fast repeated queries, and falls back to ripgrep for paths outside the project root.",
-      promptSnippet: "Fast regex search across files (trigram-indexed inside the project root)",
-      promptGuidelines: ["Prefer grep over bash-invoked find/rg for in-project searches."],
-      parameters: GrepParams,
-      async execute(
-        _toolCallId: string,
-        params: Static<typeof GrepParams>,
-        _signal,
-        _onUpdate,
-        extCtx,
-      ) {
-        const bridge = bridgeFor(ctx, extCtx.cwd);
-        const req: Record<string, unknown> = { pattern: params.pattern };
-        let pathSplit: SearchPathArgSplit | undefined;
-        if (params.path) {
-          pathSplit = await splitSearchPathArg(extCtx.cwd, params.path);
-          for (const target of pathSplit.paths) {
-            await assertExternalDirectoryPermission(
-              extCtx,
-              absoluteSearchPath(extCtx.cwd, target),
-              {
-                restrictToProjectRoot: surface.restrictToProjectRoot,
-              },
-            );
+    pi.registerTool(
+      withPathAliasPreparation({
+        name: "grep",
+        label: "grep",
+        description:
+          "Search for a regex pattern across files. Uses AFT's trigram index inside the project root for fast repeated queries, and falls back to ripgrep for paths outside the project root.",
+        promptSnippet: "Fast regex search across files (trigram-indexed inside the project root)",
+        promptGuidelines: ["Prefer grep over bash-invoked find/rg for in-project searches."],
+        parameters: GrepParams,
+        async execute(
+          _toolCallId: string,
+          params: Static<typeof GrepParams>,
+          _signal,
+          _onUpdate,
+          extCtx,
+        ) {
+          const bridge = bridgeFor(ctx, extCtx.cwd);
+          const req: Record<string, unknown> = { pattern: params.pattern };
+          let pathSplit: SearchPathArgSplit | undefined;
+          if (params.path) {
+            pathSplit = await splitSearchPathArg(extCtx.cwd, params.path);
+            for (const target of pathSplit.paths) {
+              await assertExternalDirectoryPermission(
+                extCtx,
+                absoluteSearchPath(extCtx.cwd, target),
+                {
+                  restrictToProjectRoot: surface.restrictToProjectRoot,
+                },
+              );
+            }
+            req.path = await bridgeSearchPathArg(extCtx.cwd, pathSplit);
           }
-          req.path = await bridgeSearchPathArg(extCtx.cwd, pathSplit);
-        }
-        if (params.include) req.include = params.include;
-        if (params.caseSensitive !== undefined) req.caseSensitive = params.caseSensitive;
+          if (params.include) req.include = params.include;
+          if (params.caseSensitive !== undefined) req.caseSensitive = params.caseSensitive;
 
-        const response = await callToolCall(bridge, "grep", req, extCtx);
-        if (response.success === false) {
-          throw new Error(response.text || response.message || "grep failed");
-        }
-        if (pathSplit && pathSplit.missing.length > 0) {
-          response.complete = false;
-        }
-        const text = appendSkippedSearchPaths(
-          (response.text as string | undefined) ?? "",
-          pathSplit?.missing ?? [],
-        );
-        return textResult(text, response);
-      },
-    });
+          const response = await callToolCall(bridge, "grep", req, extCtx);
+          if (response.success === false) {
+            throw new Error(response.text || response.message || "grep failed");
+          }
+          if (pathSplit && pathSplit.missing.length > 0) {
+            response.complete = false;
+          }
+          const text = appendSkippedSearchPaths(
+            (response.text as string | undefined) ?? "",
+            pathSplit?.missing ?? [],
+          );
+          return textResult(text, response);
+        },
+      }),
+    );
   }
 }
 

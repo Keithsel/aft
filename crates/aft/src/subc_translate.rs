@@ -32,6 +32,119 @@ fn invalid_request(message: impl Into<String>) -> TranslateError {
     }
 }
 
+fn path_string<'a>(value: Option<&'a Value>, property: &str) -> Result<&'a str, TranslateError> {
+    value
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            invalid_request(format!(
+                "'{property}' must be a non-empty well-formed Unicode string"
+            ))
+        })
+}
+
+fn normalize_path_alias_pair(
+    map: &mut Map<String, Value>,
+    canonical: &str,
+    legacy: &str,
+    required: bool,
+) -> Result<(), TranslateError> {
+    let has_canonical = map.contains_key(canonical);
+    let has_legacy = map.contains_key(legacy);
+    if !has_canonical && !has_legacy {
+        if required {
+            return Err(invalid_request(format!("'{canonical}' is required")));
+        }
+        return Ok(());
+    }
+
+    if has_canonical && has_legacy {
+        let canonical_value = path_string(map.get(canonical), canonical).map(str::to_owned);
+        let legacy_value = path_string(map.get(legacy), legacy).map(str::to_owned);
+        let (Ok(canonical_value), Ok(legacy_value)) = (canonical_value, legacy_value) else {
+            return Err(invalid_request(format!(
+                "Invalid request: '{canonical}' and '{legacy}' must both be non-empty well-formed Unicode strings"
+            )));
+        };
+        if canonical_value != legacy_value {
+            return Err(invalid_request(format!(
+                "Invalid request: '{canonical}' and '{legacy}' must contain equal decoded strings"
+            )));
+        }
+        map.remove(legacy);
+        return Ok(());
+    }
+
+    if has_canonical {
+        path_string(map.get(canonical), canonical)?;
+    } else if let Ok(legacy_value) = path_string(map.get(legacy), legacy) {
+        map.insert(
+            canonical.to_string(),
+            Value::String(legacy_value.to_string()),
+        );
+        map.remove(legacy);
+    } else {
+        path_string(map.get(legacy), legacy)?;
+    }
+    Ok(())
+}
+
+fn normalize_zoom_target_aliases(target: &mut Value, index: usize) -> Result<(), TranslateError> {
+    let Some(object) = target.as_object_mut() else {
+        return Err(invalid_request(format!(
+            "'targets[{index}].path' must be a non-empty string"
+        )));
+    };
+    normalize_path_alias_pair(object, "path", "filePath", true)
+}
+
+fn normalize_zoom_aliases(map: &mut Map<String, Value>) -> Result<(), TranslateError> {
+    normalize_path_alias_pair(map, "path", "filePath", false)?;
+    let Some(targets) = map.get_mut("targets") else {
+        return Ok(());
+    };
+    match targets {
+        Value::Array(items) => {
+            for (index, target) in items.iter_mut().enumerate() {
+                normalize_zoom_target_aliases(target, index)?;
+            }
+        }
+        Value::Object(_) => normalize_zoom_target_aliases(targets, 0)?,
+        _ => {}
+    }
+    Ok(())
+}
+
+fn normalize_path_arguments(bare_name: &str, args: Value) -> Result<Value, TranslateError> {
+    let mut map = match args {
+        Value::Object(map) => map,
+        _ => return Err(invalid_request("tool arguments must be an object")),
+    };
+
+    match bare_name {
+        "read" | "write" | "edit" | "move" | "import" => {
+            normalize_path_alias_pair(&mut map, "path", "filePath", false)?;
+        }
+        "refactor" => {
+            normalize_path_alias_pair(&mut map, "path", "filePath", false)?;
+        }
+        "zoom" => normalize_zoom_aliases(&mut map)?,
+        "callgraph" => {
+            normalize_path_alias_pair(&mut map, "path", "filePath", false)?;
+            normalize_path_alias_pair(&mut map, "toPath", "toFile", false)?;
+        }
+        "safety" => normalize_path_alias_pair(&mut map, "path", "filePath", false)?,
+        "grep" | "search" | "conflicts" => {
+            if map.contains_key("path") {
+                path_string(map.get("path"), "path")?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(Value::Object(map))
+}
+
 fn unsupported_tool(message: impl Into<String>) -> TranslateError {
     TranslateError {
         code: "unsupported_tool",
@@ -296,6 +409,7 @@ pub fn subc_translate_owned_with_context(
     project_root: &Path,
     ctx: TranslateContext,
 ) -> Result<Translated, TranslateError> {
+    let agent_args = normalize_path_arguments(bare_name, agent_args)?;
     match bare_name {
         "bash" => translate_bash(agent_args, project_root),
         "status" => Ok(Translated {
@@ -486,10 +600,10 @@ fn translate_callgraph(args: Value, project_root: &Path) -> Result<Translated, T
     }
 
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| invalid_request("'filePath' is required"))?;
+        .ok_or_else(|| invalid_request("'path' is required"))?;
     let symbol = map_in
         .get("symbol")
         .and_then(Value::as_str)
@@ -526,11 +640,11 @@ fn translate_callgraph(args: Value, project_root: &Path) -> Result<Translated, T
             out.insert("toSymbol".to_string(), to_symbol.clone());
         }
     }
-    if let Some(to_file) = map_in.get("toFile") {
+    if let Some(to_file) = map_in.get("toPath") {
         if !is_empty_param(to_file) {
             let to_file = to_file
                 .as_str()
-                .ok_or_else(|| invalid_request("'toFile' must be a string"))?;
+                .ok_or_else(|| invalid_request("'toPath' must be a string"))?;
             let resolved = resolve_path_from_project_root(project_root, to_file);
             out.insert(
                 "toFile".to_string(),
@@ -565,10 +679,10 @@ fn insert_common_mutation_flags(out: &mut Map<String, Value>, ctx: TranslateCont
 fn translate_read(args: Value, project_root: &Path) -> Result<Translated, TranslateError> {
     let map_in = agent_args_map(args);
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| invalid_request("'filePath' is required"))?;
+        .ok_or_else(|| invalid_request("'path' is required"))?;
 
     let mut out = Map::new();
     insert_resolved_file(&mut out, project_root, file_path);
@@ -609,9 +723,9 @@ fn translate_write(
     ctx: TranslateContext,
 ) -> Result<Translated, TranslateError> {
     let mut map_in = agent_args_map(args);
-    let file_path = match map_in.remove("filePath") {
+    let file_path = match map_in.remove("path") {
         Some(Value::String(path)) if !path.is_empty() => path,
-        _ => return Err(invalid_request("'filePath' is required")),
+        _ => return Err(invalid_request("'path' is required")),
     };
     let content = match map_in.remove("content") {
         Some(Value::String(content)) => content,
@@ -646,10 +760,10 @@ fn translate_edit(
     }
 
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| invalid_request("'filePath' is required"))?;
+        .ok_or_else(|| invalid_request("'path' is required"))?;
 
     let file_str = resolve_path_from_project_root(project_root, file_path)
         .to_string_lossy()
@@ -939,10 +1053,10 @@ fn translate_delete(args: Value, project_root: &Path) -> Result<Translated, Tran
 fn translate_move(args: Value, project_root: &Path) -> Result<Translated, TranslateError> {
     let map_in = agent_args_map(args);
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| invalid_request("aft_move: missing required param 'filePath'"))?;
+        .ok_or_else(|| invalid_request("aft_move: missing required param 'path'"))?;
     let destination = map_in
         .get("destination")
         .and_then(Value::as_str)
@@ -986,7 +1100,7 @@ fn translate_import(args: Value) -> Result<Translated, TranslateError> {
     };
 
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| invalid_request("aft_import: missing required param 'filePath'"))?;
@@ -1034,7 +1148,7 @@ fn translate_refactor(args: Value) -> Result<Translated, TranslateError> {
     };
 
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| invalid_request("aft_refactor: missing required param 'filePath'"))?;
@@ -1121,7 +1235,7 @@ fn translate_safety(args: Value, project_root: &Path) -> Result<Translated, Tran
         }
     };
 
-    if op == "history" && map_in.get("filePath").and_then(Value::as_str).is_none() {
+    if op == "history" && map_in.get("path").and_then(Value::as_str).is_none() {
         return Err(invalid_request("'filePath' is required for 'history' op"));
     }
     if matches!(op, "checkpoint" | "restore")
@@ -1159,14 +1273,14 @@ fn translate_safety(args: Value, project_root: &Path) -> Result<Translated, Tran
     if op == "checkpoint" {
         if let Some(files) = files {
             out.insert("files".to_string(), Value::Array(files));
-        } else if let Some(file_path) = map_in.get("filePath") {
+        } else if let Some(file_path) = map_in.get("path") {
             out.insert(
                 "files".to_string(),
                 Value::Array(vec![resolve_path(file_path)?]),
             );
         }
     } else {
-        if let Some(file_path) = map_in.get("filePath") {
+        if let Some(file_path) = map_in.get("path") {
             out.insert("file".to_string(), resolve_path(file_path)?);
         }
         if let Some(files) = files {
@@ -1449,7 +1563,7 @@ fn zoom_target_entry_is_empty(entry: &Value) -> bool {
         return true;
     };
     let file_path_empty = obj
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .is_none_or(str::is_empty);
     let symbol_empty = obj
@@ -1497,7 +1611,7 @@ fn translate_zoom_targets(
     for (index, target) in target_values.into_iter().enumerate() {
         let obj = target.as_object();
         let file_path = obj
-            .and_then(|obj| obj.get("filePath"))
+            .and_then(|obj| obj.get("path"))
             .and_then(Value::as_str)
             .filter(|file_path| !file_path.is_empty())
             .ok_or_else(|| {
@@ -1535,7 +1649,7 @@ fn translate_zoom(args: Value, project_root: &Path) -> Result<Translated, Transl
 
     let has_targets = zoom_targets_provided(map_in.get("targets"));
     let has_file_path = map_in
-        .get("filePath")
+        .get("path")
         .is_some_and(|value| !is_empty_param(value));
     let has_url = map_in
         .get("url")
@@ -1583,7 +1697,7 @@ fn translate_zoom(args: Value, project_root: &Path) -> Result<Translated, Transl
     }
 
     let file_path = map_in
-        .get("filePath")
+        .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty());
     let url = map_in
@@ -1732,6 +1846,38 @@ fn translate_inspect(args: Value, project_root: &Path) -> Result<Translated, Tra
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_aliases_normalize_equal_and_reject_conflicts() {
+        let project = Path::new("/project");
+        let legacy = serde_json::json!({"filePath": "src/main.ts", "content": "x"});
+        let canonical = serde_json::json!({"path": "src/main.ts", "content": "x"});
+        assert_eq!(
+            subc_translate_owned("write", legacy, project).expect("legacy path"),
+            subc_translate_owned("write", canonical, project).expect("canonical path")
+        );
+
+        let conflict = serde_json::json!({"path": "src/a.ts", "filePath": "src/b.ts"});
+        let error = subc_translate_owned("read", conflict, project).expect_err("conflict");
+        assert_eq!(error.code, "invalid_request");
+        assert!(error.message.contains("path"));
+        assert!(error.message.contains("filePath"));
+    }
+
+    #[test]
+    fn path_aliases_keep_unicode_scalar_equality_strict() {
+        let project = Path::new("/project");
+        let equal = serde_json::json!({"path": "src/😀.ts", "filePath": "src/😀.ts"});
+        assert!(subc_translate_owned("read", equal, project).is_ok());
+
+        let canonically_different = serde_json::json!({
+            "path": "src/é.ts",
+            "filePath": "src/e\u{301}.ts"
+        });
+        let error = subc_translate_owned("read", canonically_different, project)
+            .expect_err("different Unicode normalization");
+        assert_eq!(error.code, "invalid_request");
+    }
 
     #[test]
     fn owned_write_translation_moves_content_buffer() {

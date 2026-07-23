@@ -1,3 +1,4 @@
+import { prepareCanonicalPathArguments } from "@cortexkit/aft-bridge";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 
@@ -48,15 +49,91 @@ export function normalizeToolArgSchemas<T extends Pick<ToolDefinition, "args">>(
   return toolDefinition;
 }
 
-/**
- * Normalize all tool definitions in a record.
- * Applies `normalizeToolArgSchemas` to each tool in the map.
- */
-export function normalizeToolMap(
-  tools: Record<string, ToolDefinition>,
-): Record<string, ToolDefinition> {
-  for (const def of Object.values(tools)) {
-    normalizeToolArgSchemas(def);
+function bareToolName(toolName: string): string {
+  return toolName.startsWith("aft_") ? toolName.slice(4) : toolName;
+}
+
+/** Prepare raw OpenCode arguments and retain legacy fields for old schemas. */
+export function prepareOpenCodeArguments(
+  toolName: string,
+  rawArguments: unknown,
+): Record<string, unknown> {
+  const raw =
+    rawArguments && typeof rawArguments === "object" && !Array.isArray(rawArguments)
+      ? (rawArguments as Record<string, unknown>)
+      : undefined;
+  // aft_edit's historical mode:"write" shim uses `file`, which is not a path
+  // alias and must reach the shim untouched.
+  if (bareToolName(toolName) === "edit" && raw?.mode === "write" && typeof raw.file === "string") {
+    return { ...raw };
+  }
+
+  const prepared = prepareCanonicalPathArguments(toolName, rawArguments);
+  const tool = bareToolName(toolName);
+  if (
+    ![
+      "read",
+      "write",
+      "edit",
+      "zoom",
+      "callgraph",
+      "safety",
+      "move",
+      "import",
+      "refactor",
+    ].includes(tool)
+  ) {
+    return prepared;
+  }
+
+  const result = { ...prepared };
+  if (typeof result.path === "string") {
+    result.filePath = result.path;
+    delete result.path;
+  }
+  if (typeof result.toPath === "string") {
+    result.toFile = result.toPath;
+    delete result.toPath;
+  }
+  if (Array.isArray(result.targets)) {
+    result.targets = result.targets.map((target) => {
+      if (!target || typeof target !== "object" || Array.isArray(target)) return target;
+      const converted = { ...(target as Record<string, unknown>) };
+      if (typeof converted.path === "string") {
+        converted.filePath = converted.path;
+        delete converted.path;
+      }
+      return converted;
+    });
+  } else if (result.targets && typeof result.targets === "object") {
+    const converted = { ...(result.targets as Record<string, unknown>) };
+    if (typeof converted.path === "string") {
+      converted.filePath = converted.path;
+      delete converted.path;
+    }
+    result.targets = converted;
+  }
+  return result;
+}
+
+function prepareToolMap(tools: Record<string, ToolDefinition>): Record<string, ToolDefinition> {
+  for (const [toolName, def] of Object.entries(tools)) {
+    const execute = def.execute;
+    def.execute = (async (args, context) => {
+      const prepared = prepareOpenCodeArguments(toolName, args);
+      return execute(prepared, context);
+    }) as ToolDefinition["execute"];
   }
   return tools;
 }
+
+/** Normalize tool definitions and attach raw-argument preparation. */
+export function normalizeToolMap(
+  tools: Record<string, ToolDefinition>,
+): Record<string, ToolDefinition> {
+  for (const def of Object.values(tools)) normalizeToolArgSchemas(def);
+  return prepareToolMap(tools);
+}
+
+/** Attach argument preparation without changing emitted schema metadata. */
+export { prepareToolMap };

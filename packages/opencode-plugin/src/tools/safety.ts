@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { coerceStringArray } from "@cortexkit/aft-bridge";
 import type { ToolContext, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import { callBridge, callToolCall, expandTilde, resolveProjectRoot } from "./_shared.js";
 import {
@@ -47,7 +48,7 @@ function relativePatternsFromPaths(context: ToolContext, paths: string[]): strin
  * checkpoint, restore_checkpoint, list_checkpoints.
  */
 export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> {
-  return {
+  return prepareToolMap({
     aft_safety: {
       description:
         "File safety and recovery operations.\n\n" +
@@ -83,8 +84,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
       execute: async (args, context): Promise<string> => {
         const op = args.op as string;
 
-        if (op === "history" && typeof args.filePath !== "string") {
-          throw new Error(`'filePath' is required for '${op}' op`);
+        if (op === "history" && typeof (args.path ?? args.filePath) !== "string") {
+          throw new Error(`'path' is required for '${op}' op`);
         }
         if ((op === "checkpoint" || op === "restore") && typeof args.name !== "string") {
           throw new Error(`'name' is required for '${op}' op`);
@@ -92,7 +93,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
 
         if (op === "undo") {
           const previewParams: Record<string, unknown> = {};
-          if (typeof args.filePath === "string") previewParams.file = args.filePath;
+          if (typeof (args.path ?? args.filePath) === "string")
+            previewParams.file = args.path ?? args.filePath;
           const preview = await callBridge(ctx, context, "undo_preview", previewParams);
           if (preview.success === false) {
             throw new Error(bridgeErrorMessage(preview, "undo preview failed"));
@@ -105,8 +107,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
           }
 
           const filePath =
-            typeof args.filePath === "string"
-              ? resolveAbsolutePath(context, args.filePath)
+            typeof (args.path ?? args.filePath) === "string"
+              ? resolveAbsolutePath(context, (args.path ?? args.filePath) as string)
               : undefined;
           const permissionError = await askEditPermission(
             context,
@@ -121,8 +123,8 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
           const checkpointFiles =
             coercedFiles.length > 0
               ? coercedFiles
-              : typeof args.filePath === "string"
-                ? [args.filePath]
+              : typeof (args.path ?? args.filePath) === "string"
+                ? [args.path ?? args.filePath]
                 : undefined;
           if (Array.isArray(checkpointFiles)) {
             const projectRoot = await resolveProjectRoot(ctx, context);
@@ -169,7 +171,9 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
         // paths are left for Rust to resolve against the project root.
         const payloadFiles = coerceStringArray(args.files).map(expandTilde);
         const filePathArg =
-          typeof args.filePath === "string" ? expandTilde(args.filePath) : undefined;
+          typeof (args.path ?? args.filePath) === "string"
+            ? expandTilde((args.path ?? args.filePath) as string)
+            : undefined;
         if (filePathArg !== undefined) rawArgs.filePath = filePathArg;
         if (payloadFiles.length > 0) rawArgs.files = payloadFiles;
 
@@ -180,5 +184,5 @@ export function safetyTools(ctx: PluginContext): Record<string, ToolDefinition> 
         return response.text;
       },
     },
-  };
+  });
 }

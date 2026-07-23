@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import { callToolCall, isEmptyParam, resolvePathArg } from "./_shared.js";
 import {
@@ -19,7 +20,7 @@ export function importTools(ctx: PluginContext): Record<string, ToolDefinition> 
     ctx.config.backup?.enabled === false
       ? "Backup capture is disabled by user config; review broad cleanup changes before proceeding."
       : "Use aft_safety checkpoint/undo for recovery before broad cleanup.";
-  return {
+  return prepareToolMap({
     aft_import: {
       description:
         "Language-aware import management. Supports TS, JS, TSX, Python, Rust, Go, Solidity, Java, C#, PHP, Kotlin, Scala, Swift, Ruby, Lua, C, C++, Perl, and Vue.\n\n" +
@@ -92,7 +93,7 @@ export function importTools(ctx: PluginContext): Record<string, ToolDefinition> 
           throw new Error(`'module' is required for '${op}' op`);
         }
 
-        const filePath = await resolvePathArg(ctx, context, args.filePath as string);
+        const filePath = await resolvePathArg(ctx, context, (args.path ?? args.filePath) as string);
 
         // External-directory check first (mirrors opencode-native edit.ts:68).
         {
@@ -125,5 +126,5 @@ export function importTools(ctx: PluginContext): Record<string, ToolDefinition> 
         return response.text;
       },
     },
-  };
+  });
 }
