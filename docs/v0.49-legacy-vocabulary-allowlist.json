@@ -395,15 +395,6 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 1634, column 38",
-      "line": 1634,
-      "column": 38,
-      "token": "filePath",
-      "class": "rust-compatibility",
-      "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
-    },
-    {
-      "path": "crates/aft/src/subc_translate.rs",
       "location": "line 2009, column 39",
       "line": 2009,
       "column": 39,
@@ -1208,15 +1199,6 @@
       "location": "line 3, column 6",
       "line": 3,
       "column": 6,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "crates/aft/tests/fixtures/subc_parity/translate/safety_missing_filePath_for_history/expected.json",
-      "location": "line 4, column 18",
-      "line": 4,
-      "column": 18,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
@@ -8549,27 +8531,9 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/e2e/reading.test.ts",
-      "location": "line 320, column 38",
-      "line": 320,
-      "column": 38,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/e2e/reading.test.ts",
       "location": "line 323, column 9",
       "line": 323,
       "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/e2e/reading.test.ts",
-      "location": "line 327, column 40",
-      "line": 327,
-      "column": 40,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
@@ -8588,24 +8552,6 @@
       "location": "line 59, column 7",
       "line": 59,
       "column": 7,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/e2e/safety.test.ts",
-      "location": "line 27, column 26",
-      "line": 27,
-      "column": 26,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/e2e/safety.test.ts",
-      "location": "line 28, column 86",
-      "line": 28,
-      "column": 86,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
@@ -9026,8 +8972,26 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 192, column 49",
-      "line": 192,
+      "location": "line 180, column 22",
+      "line": 180,
+      "column": 22,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 193, column 44",
+      "line": 193,
+      "column": 44,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 194, column 49",
+      "line": 194,
       "column": 49,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9035,8 +8999,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 193, column 35",
-      "line": 193,
+      "location": "line 195, column 35",
+      "line": 195,
       "column": 35,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9044,8 +9008,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 194, column 42",
-      "line": 194,
+      "location": "line 196, column 42",
+      "line": 196,
       "column": 42,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9053,17 +9017,17 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 196, column 71",
-      "line": 196,
-      "column": 71,
+      "location": "line 199, column 52",
+      "line": 199,
+      "column": 52,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 200, column 53",
-      "line": 200,
+      "location": "line 201, column 53",
+      "line": 201,
       "column": 53,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9071,17 +9035,17 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 487, column 71",
-      "line": 487,
-      "column": 71,
+      "location": "line 488, column 22",
+      "line": 488,
+      "column": 22,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 518, column 9",
-      "line": 518,
+      "location": "line 510, column 9",
+      "line": 510,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9089,8 +9053,26 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 526, column 9",
-      "line": 526,
+      "location": "line 516, column 7",
+      "line": 516,
+      "column": 7,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 525, column 52",
+      "line": 525,
+      "column": 52,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 529, column 9",
+      "line": 529,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9098,8 +9080,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 799, column 7",
-      "line": 799,
+      "location": "line 801, column 7",
+      "line": 801,
       "column": 7,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9107,8 +9089,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 805, column 7",
-      "line": 805,
+      "location": "line 807, column 7",
+      "line": 807,
       "column": 7,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9116,8 +9098,35 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 826, column 42",
-      "line": 826,
+      "location": "line 814, column 23",
+      "line": 814,
+      "column": 23,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 827, column 50",
+      "line": 827,
+      "column": 50,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 828, column 36",
+      "line": 828,
+      "column": 36,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
+      "location": "line 829, column 42",
+      "line": 829,
       "column": 42,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9125,26 +9134,26 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 830, column 9",
-      "line": 830,
-      "column": 9,
+      "location": "line 831, column 53",
+      "line": 831,
+      "column": 53,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 836, column 32",
-      "line": 836,
-      "column": 32,
+      "location": "line 833, column 54",
+      "line": 833,
+      "column": 54,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 859, column 7",
-      "line": 859,
+      "location": "line 856, column 7",
+      "line": 856,
       "column": 7,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9152,8 +9161,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 868, column 7",
-      "line": 868,
+      "location": "line 865, column 7",
+      "line": 865,
       "column": 7,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9161,8 +9170,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 896, column 7",
-      "line": 896,
+      "location": "line 893, column 7",
+      "line": 893,
       "column": 7,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9170,8 +9179,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 943, column 42",
-      "line": 943,
+      "location": "line 940, column 42",
+      "line": 940,
       "column": 42,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9179,8 +9188,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 967, column 9",
-      "line": 967,
+      "location": "line 964, column 9",
+      "line": 964,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9188,8 +9197,8 @@
     },
     {
       "path": "packages/pi-plugin/src/__tests__/hoisted.test.ts",
-      "location": "line 972, column 48",
-      "line": 972,
+      "location": "line 969, column 48",
+      "line": 969,
       "column": 48,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -9745,123 +9754,6 @@
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 23, column 11",
-      "line": 23,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 25, column 23",
-      "line": 25,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 40, column 23",
-      "line": 40,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 55, column 11",
-      "line": 55,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 57, column 23",
-      "line": 57,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 72, column 11",
-      "line": 72,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 74, column 23",
-      "line": 74,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 120, column 15",
-      "line": 120,
-      "column": 15,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 121, column 15",
-      "line": 121,
-      "column": 15,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 127, column 15",
-      "line": 127,
-      "column": 15,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 128, column 15",
-      "line": 128,
-      "column": 15,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 173, column 11",
-      "line": 173,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/reading-renderers.test.ts",
-      "location": "line 175, column 23",
-      "line": 175,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
       "path": "packages/pi-plugin/src/__tests__/reading.test.ts",
       "location": "line 142, column 9",
       "line": 142,
@@ -10325,78 +10217,6 @@
       "location": "line 107, column 9",
       "line": 107,
       "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 15, column 23",
-      "line": 15,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 17, column 35",
-      "line": 17,
-      "column": 35,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 29, column 23",
-      "line": 29,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 31, column 35",
-      "line": 31,
-      "column": 35,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 40, column 26",
-      "line": 40,
-      "column": 26,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 42, column 38",
-      "line": 42,
-      "column": 38,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 78, column 23",
-      "line": 78,
-      "column": 23,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/pi-plugin/src/__tests__/safety-renderers.test.ts",
-      "location": "line 80, column 35",
-      "line": 80,
-      "column": 35,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
