@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "artifact_id": "ART-V049-S0-MANIFEST-001",
+  "artifact_version": "0.49.0",
+  "manifest_revision": 1,
+  "status": "checked-baseline-and-target",
+  "spec_id": "SPEC-V049-UNIFIED-TOOL-SURFACE-001",
+  "work_item": "S0-spec-spine-and-inventories",
+  "source_spec": {
+    "external_draft": "/Users/ufukaltinok/Work/Projects/CortexKit/aft/.cortexkit/alfonso/drafts/2026-07-22-v0-49-unified-tool-surface-path-everywhere-edits-only-1-based-occurrence.md",
+    "repository_copy": "docs/v0.49-unified-tool-surface-spec.md",
+    "accepted_addenda": [
+      "acceptance_criteria_addendum",
+      "acceptance_criteria_surface_addendum",
+      "release_dependency"
+    ]
+  },
+  "stable_ids": {
+    "spec": "SPEC-V049-UNIFIED-TOOL-SURFACE-001",
+    "path_inventory": "INV-V049-CANONICAL-PATH-001",
+    "subc_capability_inventory": "INV-V049-SUBC-CAPABILITY-001",
+    "registration_profiles": "MAN-V049-REGISTRATION-PROFILES-001",
+    "shared_tools": "INV-V049-SHARED-TOOLS-001",
+    "scalar_domains": "INV-V049-COMPATIBILITY-SCALARS-001",
+    "hidden_fold": "FOLD-V049-HIDDEN-SINGLE-EDIT-001",
+    "fixtures": "TBL-V049-CONTRACT-FIXTURES-001",
+    "distribution_artifacts": "MAN-V049-DISTRIBUTION-ARTIFACTS-001",
+    "legacy_allowlist": "LIST-V049-LEGACY-VOCABULARY-001",
+    "host_only_allowlist": "LIST-V049-HOST-ONLY-TOOLS-001"
+  },
+  "checked_sources": [
+    "packages/opencode-plugin/src/index.ts",
+    "packages/opencode-plugin/src/tools/hoisted.ts",
+    "packages/opencode-plugin/src/tools/reading.ts",
+    "packages/opencode-plugin/src/tools/navigation.ts",
+    "packages/opencode-plugin/src/tools/refactoring.ts",
+    "packages/opencode-plugin/src/tools/safety.ts",
+    "packages/pi-plugin/src/index.ts",
+    "packages/pi-plugin/src/tools/hoisted.ts",
+    "packages/pi-plugin/src/tools/reading.ts",
+    "packages/pi-plugin/src/tools/fs.ts",
+    "crates/aft/src/subc_tool_schemas.json",
+    "packages/opencode-plugin/src/subc-tool-schemas.ts"
+  ],
+  "canonical_path_property_inventory": {
+    "inventory_id": "INV-V049-CANONICAL-PATH-001",
+    "rule": "A single source or subject file property named filePath is emitted as path; aft_callgraph.toFile is emitted as toPath. Legacy spellings are input-only compatibility aliases.",
+    "pointer_syntax": "JSON Pointer templates use {index} for an array item.",
+    "rows": [
+      {
+        "id": "PATH-V049-001",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "read",
+        "tool": "read",
+        "json_pointer": "/path",
+        "semantic_role": "single subject/source file or directory",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-002",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "write",
+        "tool": "write",
+        "json_pointer": "/path",
+        "semantic_role": "single target file",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-003",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "edit",
+        "tool": "edit",
+        "json_pointer": "/path",
+        "semantic_role": "single target file",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-004",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "zoom",
+        "tool": "aft_zoom",
+        "json_pointer": "/path",
+        "semantic_role": "single subject file in file mode",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "optional; required when file mode is selected",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-005",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "zoom",
+        "tool": "aft_zoom",
+        "json_pointer": "/targets/{index}/path",
+        "semantic_role": "subject file in a cross-file target item",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required per target item",
+        "baseline_property": "targets[{index}].filePath"
+      },
+      {
+        "id": "PATH-V049-006",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "callgraph",
+        "tool": "aft_callgraph",
+        "json_pointer": "/path",
+        "semantic_role": "source file containing the analyzed symbol",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-007",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "callgraph",
+        "tool": "aft_callgraph",
+        "json_pointer": "/toPath",
+        "semantic_role": "optional target file used to disambiguate a target symbol",
+        "canonical": "toPath",
+        "legacy": "toFile",
+        "requiredness": "optional",
+        "baseline_property": "toFile"
+      },
+      {
+        "id": "PATH-V049-008",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "move",
+        "tool": "aft_move",
+        "json_pointer": "/path",
+        "semantic_role": "source file for an OS-level move",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-009",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "import",
+        "tool": "aft_import",
+        "json_pointer": "/path",
+        "semantic_role": "source file whose imports are managed",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-010",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "refactor",
+        "tool": "aft_refactor",
+        "json_pointer": "/path",
+        "semantic_role": "source file containing the moved, extracted, or inlined symbol",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "required",
+        "baseline_property": "filePath"
+      },
+      {
+        "id": "PATH-V049-011",
+        "harnesses": ["opencode", "pi"],
+        "subc_artifact": "safety",
+        "tool": "aft_safety",
+        "json_pointer": "/path",
+        "semantic_role": "optional operation-specific file selector",
+        "canonical": "path",
+        "legacy": "filePath",
+        "requiredness": "optional at root; required by history and optional by undo",
+        "baseline_property": "filePath"
+      }
+    ],
+    "retained_role_inventory": [
+      {"id": "ROLE-V049-001", "tool": "aft_move", "pointer": "/destination", "role": "destination file", "reason": "not a single source or subject path"},
+      {"id": "ROLE-V049-002", "tool": "apply_patch", "pointer": "/patchText", "role": "patch payload", "reason": "payload is not a file path"},
+      {"id": "ROLE-V049-003", "tool": "aft_delete", "pointer": "/files", "role": "file collection", "reason": "collection role is explicitly retained"},
+      {"id": "ROLE-V049-004", "tool": "aft_outline", "pointer": "/target", "role": "polymorphic file, directory, URL, or path collection", "reason": "polymorphic target role is explicitly retained"},
+      {"id": "ROLE-V049-005", "tool": "aft_zoom", "pointer": "/url", "role": "remote URL", "reason": "URL is not a local file path"},
+      {"id": "ROLE-V049-006", "tool": "aft_search", "pointer": "/path", "role": "search scope", "reason": "already canonical and scope semantics are retained"},
+      {"id": "ROLE-V049-007", "tool": "glob", "pointer": "/path", "role": "search scope", "reason": "already canonical and scope semantics are retained"},
+      {"id": "ROLE-V049-008", "tool": "grep", "pointer": "/path", "role": "search scope", "reason": "already canonical and scope semantics are retained"},
+      {"id": "ROLE-V049-009", "tool": "aft_safety", "pointer": "/files", "role": "checkpoint file collection", "reason": "collection role is explicitly retained"}
+    ]
+  },
+  "subc_capability_inventory": {
+    "inventory_id": "INV-V049-SUBC-CAPABILITY-001",
+    "artifact": "crates/aft/src/subc_tool_schemas.json",
+    "schema_owner": "packages/opencode-plugin/src/subc-tool-schemas.ts",
+    "translation_boundaries": [
+      {"id": "SUBC-CAP-V049-001", "bind": "trusted", "stage": "before manifest-schema validation", "required": true, "status": "contractual; implementation owned by later slice"},
+      {"id": "SUBC-CAP-V049-002", "bind": "untrusted/MCP", "stage": "before manifest-schema validation", "required": true, "status": "contractual; implementation owned by later slice"}
+    ],
+    "artifact_capabilities": [
+      {"id": "SUBC-CAP-V049-003", "capability": "21 bare manifest names are serialized in fixed order", "evidence": "BARE_TOOL_ORDER in packages/opencode-plugin/src/subc-tool-schemas.ts", "status": "checked"},
+      {"id": "SUBC-CAP-V049-004", "capability": "schemas are loaded by Rust manifest translation", "evidence": "crates/aft/src/subc/manifest.rs include_str!", "status": "checked"},
+      {"id": "SUBC-CAP-V049-005", "capability": "schema bytes can be regenerated from host definitions", "evidence": "packages/opencode-plugin/scripts/build-tool-schemas.ts", "status": "checked; regeneration prohibited in S0"},
+      {"id": "SUBC-CAP-V049-006", "capability": "trusted and untrusted binds share canonical compatibility rules", "evidence": "v0.49 specification contract", "status": "target; boundary tests owned by later slices"}
+    ],
+    "bare_tools": [
+      {"id": "SUBC-TOOL-V049-001", "name": "bash", "preview": "unknown; verify at command capability boundary"},
+      {"id": "SUBC-TOOL-V049-002", "name": "read", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-003", "name": "write", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-004", "name": "edit", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-005", "name": "apply_patch", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-006", "name": "grep", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-007", "name": "glob", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-008", "name": "search", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-009", "name": "outline", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-010", "name": "zoom", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-011", "name": "inspect", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-012", "name": "callgraph", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-013", "name": "conflicts", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-014", "name": "ast_search", "preview": "not a mutation"},
+      {"id": "SUBC-TOOL-V049-015", "name": "ast_replace", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-016", "name": "delete", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-017", "name": "move", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-018", "name": "import", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-019", "name": "refactor", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-020", "name": "safety", "preview": "unknown; verify host/command capability"},
+      {"id": "SUBC-TOOL-V049-021", "name": "status", "preview": "not a mutation; subc-only probe"}
+    ]
+  },
+  "registration_profile_manifest": {
+    "manifest_id": "MAN-V049-REGISTRATION-PROFILES-001",
+    "name_mapping": {
+      "read": "read",
+      "write": "write",
+      "edit": "edit",
+      "apply_patch": "apply_patch",
+      "grep": "grep",
+      "glob": "glob",
+      "search": "aft_search",
+      "outline": "aft_outline",
+      "zoom": "aft_zoom",
+      "inspect": "aft_inspect",
+      "callgraph": "aft_callgraph",
+      "conflicts": "aft_conflicts",
+      "ast_search": "ast_grep_search",
+      "ast_replace": "ast_grep_replace",
+      "delete": "aft_delete",
+      "move": "aft_move",
+      "import": "aft_import",
+      "refactor": "aft_refactor",
+      "safety": "aft_safety"
+    },
+    "profiles": [
+      {
+        "id": "REG-V049-OC-MIN",
+        "harness": "opencode",
+        "surface": "minimal",
+        "contract_tools": ["aft_outline", "aft_zoom", "aft_safety"],
+        "conditional": ["aft_safety when backup.enabled is not false"],
+        "parity_role": "host profile; not the full shared parity projection"
+      },
+      {
+        "id": "REG-V049-OC-REC",
+        "harness": "opencode",
+        "surface": "recommended",
+        "contract_tools": ["bash", "read", "write", "edit", "apply_patch", "aft_outline", "aft_zoom", "aft_inspect", "aft_import", "aft_conflicts", "ast_grep_search", "ast_grep_replace", "aft_safety"],
+        "conditional": ["bash_status", "bash_write", "bash_watch", "bash_kill when bash.background is true", "grep and glob when search_index is true", "aft_search when semantic_search is true", "aft_inspect when inspect.enabled is not false", "aft_safety when backup.enabled is not false"],
+        "parity_role": "host profile"
+      },
+      {
+        "id": "REG-V049-OC-ALL",
+        "harness": "opencode",
+        "surface": "all",
+        "contract_tools": ["bash", "read", "write", "edit", "apply_patch", "aft_outline", "aft_zoom", "aft_inspect", "aft_import", "aft_conflicts", "ast_grep_search", "ast_grep_replace", "aft_callgraph", "aft_delete", "aft_move", "aft_refactor", "aft_safety"],
+        "conditional": ["recommended-profile conditionals remain in force"],
+        "parity_role": "full shared parity profile"
+      },
+      {
+        "id": "REG-V049-PI-MIN",
+        "harness": "pi",
+        "surface": "minimal",
+        "contract_tools": ["aft_outline", "aft_zoom", "aft_safety"],
+        "conditional": ["bash when bash is enabled; Pi keeps this hoisted control in its minimal profile", "aft_safety when backup.enabled is not false"],
+        "parity_role": "host profile; host-only delta is checked explicitly"
+      },
+      {
+        "id": "REG-V049-PI-REC",
+        "harness": "pi",
+        "surface": "recommended",
+        "contract_tools": ["bash", "read", "write", "edit", "aft_outline", "aft_zoom", "aft_inspect", "aft_import", "aft_conflicts", "ast_grep_search", "ast_grep_replace", "aft_safety"],
+        "conditional": ["bash_status", "bash_write", "bash_watch", "bash_kill when bash.background is true", "grep when search_index is true", "aft_search when semantic_search is true", "aft_inspect when inspect.enabled is not false", "aft_safety when backup.enabled is not false"],
+        "parity_role": "host profile"
+      },
+      {
+        "id": "REG-V049-PI-ALL",
+        "harness": "pi",
+        "surface": "all",
+        "contract_tools": ["bash", "read", "write", "edit", "aft_outline", "aft_zoom", "aft_inspect", "aft_import", "aft_conflicts", "ast_grep_search", "ast_grep_replace", "aft_callgraph", "aft_delete", "aft_move", "aft_refactor", "aft_safety"],
+        "conditional": ["recommended-profile conditionals remain in force"],
+        "parity_role": "full shared parity profile"
+      }
+    ],
+    "host_only_allowlist": [
+      {"id": "HOSTONLY-V049-001", "harness": "subc", "tool": "status", "reason": "manifest health probe is not an agent-registered tool", "owning_test": "scripts/capture-subc-parity.ts"},
+      {"id": "HOSTONLY-V049-002", "harness": "opencode", "tool": "aft_bash", "reason": "only used when built-in bash hoisting is disabled", "owning_test": "packages/opencode-plugin/src/__tests__/tool-surface-transport-invariant.test.ts"},
+      {"id": "HOSTONLY-V049-003", "harness": "opencode", "tool": "aft_read/aft_write/aft_edit/aft_apply_patch", "reason": "prefixed fallback when built-in hoisting is disabled", "owning_test": "packages/opencode-plugin/src/__tests__/tool-surface-transport-invariant.test.ts"}
+    ]
+  },
+  "shared_tool_inventory": {
+    "inventory_id": "INV-V049-SHARED-TOOLS-001",
+    "projection": ["registered name", "recursively sorted JSON Schema", "agent-visible description", "contract-owned error code and message"],
+    "parity_profiles": ["REG-V049-OC-ALL", "REG-V049-PI-ALL"],
+    "tools": [
+      {"id": "SHARED-V049-001", "bare": "bash", "opencode": "bash", "pi": "bash", "subc": "bash"},
+      {"id": "SHARED-V049-002", "bare": "read", "opencode": "read", "pi": "read", "subc": "read"},
+      {"id": "SHARED-V049-003", "bare": "write", "opencode": "write", "pi": "write", "subc": "write"},
+      {"id": "SHARED-V049-004", "bare": "edit", "opencode": "edit", "pi": "edit", "subc": "edit"},
+      {"id": "SHARED-V049-005", "bare": "apply_patch", "opencode": "apply_patch", "pi": "apply_patch", "subc": "apply_patch"},
+      {"id": "SHARED-V049-006", "bare": "grep", "opencode": "grep", "pi": "grep", "subc": "grep"},
+      {"id": "SHARED-V049-007", "bare": "glob", "opencode": "glob", "pi": "glob", "subc": "glob"},
+      {"id": "SHARED-V049-008", "bare": "search", "opencode": "aft_search", "pi": "aft_search", "subc": "search"},
+      {"id": "SHARED-V049-009", "bare": "outline", "opencode": "aft_outline", "pi": "aft_outline", "subc": "outline"},
+      {"id": "SHARED-V049-010", "bare": "zoom", "opencode": "aft_zoom", "pi": "aft_zoom", "subc": "zoom"},
+      {"id": "SHARED-V049-011", "bare": "inspect", "opencode": "aft_inspect", "pi": "aft_inspect", "subc": "inspect"},
+      {"id": "SHARED-V049-012", "bare": "callgraph", "opencode": "aft_callgraph", "pi": "aft_callgraph", "subc": "callgraph"},
+      {"id": "SHARED-V049-013", "bare": "conflicts", "opencode": "aft_conflicts", "pi": "aft_conflicts", "subc": "conflicts"},
+      {"id": "SHARED-V049-014", "bare": "ast_search", "opencode": "ast_grep_search", "pi": "ast_grep_search", "subc": "ast_search"},
+      {"id": "SHARED-V049-015", "bare": "ast_replace", "opencode": "ast_grep_replace", "pi": "ast_grep_replace", "subc": "ast_replace"},
+      {"id": "SHARED-V049-016", "bare": "delete", "opencode": "aft_delete", "pi": "aft_delete", "subc": "delete"},
+      {"id": "SHARED-V049-017", "bare": "move", "opencode": "aft_move", "pi": "aft_move", "subc": "move"},
+      {"id": "SHARED-V049-018", "bare": "import", "opencode": "aft_import", "pi": "aft_import", "subc": "import"},
+      {"id": "SHARED-V049-019", "bare": "refactor", "opencode": "aft_refactor", "pi": "aft_refactor", "subc": "refactor"},
+      {"id": "SHARED-V049-020", "bare": "safety", "opencode": "aft_safety", "pi": "aft_safety", "subc": "safety"}
+    ],
+    "host_control_tools": [
+      {"id": "HOSTCTRL-V049-001", "name": "bash_status", "harnesses": ["opencode", "pi"], "subc_projection": "bash status operation"},
+      {"id": "HOSTCTRL-V049-002", "name": "bash_write", "harnesses": ["opencode", "pi"], "subc_projection": "bash input operation"},
+      {"id": "HOSTCTRL-V049-003", "name": "bash_watch", "harnesses": ["opencode", "pi"], "subc_projection": "bash wait operation"},
+      {"id": "HOSTCTRL-V049-004", "name": "bash_kill", "harnesses": ["opencode", "pi"], "subc_projection": "bash cancellation operation"}
+    ],
+    "set_equality_rule": "For a selected full parity profile, remove only the checked host-only entries, then compare each host name set to this inventory; never derive the inventory from the runtime intersection."
+  },
+  "compatibility_scalar_domains": {
+    "inventory_id": "INV-V049-COMPATIBILITY-SCALARS-001",
+    "domains": [
+      {
+        "id": "SCALAR-V049-001",
+        "field": "replaceAll",
+        "scope": "canonical edit item and hidden folded item",
+        "accepted": ["boolean true or false", "ASCII case permutations of string true or false", "number 1 or 0", "string 1 or 0"],
+        "normalized": "boolean",
+        "omitted": "missing property only",
+        "rejected": ["null", "array", "object", "non-integral number", "number other than 0 or 1", "unrelated string"],
+        "stable_error": "invalid_request"
+      },
+      {
+        "id": "SCALAR-V049-002",
+        "field": "occurrence",
+        "scope": "canonical edit item and hidden folded item",
+        "accepted": ["positive safe-integer number", "trimmed ASCII string matching ^[+]?[0-9]+$ whose mathematical value is at most Number.MAX_SAFE_INTEGER"],
+        "normalized": "positive integer, 1-based",
+        "omitted": ["missing property", "null", "empty string", "ASCII-whitespace-only string"],
+        "rejected": ["zero and all zero spellings", "negative values", "overflow", "non-integral numbers", "decimal points", "exponent notation", "hexadecimal or other radix prefixes", "NaN", "infinity", "arrays", "objects", "unrelated strings"],
+        "stable_error": "invalid_request"
+      },
+      {
+        "id": "SCALAR-V049-003",
+        "field": "edits",
+        "scope": "explicit edit mode",
+        "accepted": ["array with at least one item", "JSON string parsing to an array with at least one item"],
+        "parse_order": "only after edit-mode presence and conflict detection",
+        "rejected": ["malformed JSON", "JSON root other than array", "empty array"],
+        "stable_error": "invalid_request"
+      },
+      {
+        "id": "SCALAR-V049-004",
+        "field": "path aliases",
+        "scope": "all inventory rows and nested target rows",
+        "accepted": ["canonical only", "legacy only copied to canonical", "both with equal string values retains canonical"],
+        "rejected": ["both unequal", "either value incompatible with the canonical string type"],
+        "stable_error": "invalid_request naming both properties"
+      },
+      {
+        "id": "SCALAR-V049-005",
+        "field": "edit item aliases",
+        "scope": "edits[index] only",
+        "accepted": ["oldText normalizes to oldString", "newText normalizes to newString", "canonical spelling wins when both exist"],
+        "rejected": ["winning canonical spelling has the wrong canonical type"],
+        "stable_error": "invalid_request naming edits[index]"
+      }
+    ]
+  },
+  "hidden_top_level_fold": {
+    "fold_id": "FOLD-V049-HIDDEN-SINGLE-EDIT-001",
+    "trigger_fields": ["oldString", "newString", "replaceAll", "occurrence"],
+    "presence_rule": "own-property presence, before coercion or unknown-property stripping",
+    "shape": {"path": "canonical path", "edits": [{"oldString": "string", "newString": "optional string", "replaceAll": "optional scalar from SCALAR-V049-001", "occurrence": "optional scalar from SCALAR-V049-002"}]},
+    "rules": [
+      "oldString is required and must be a string",
+      "missing newString retains the existing empty-replacement behavior",
+      "hidden replaceAll and occurrence are copied without changing their semantics",
+      "replaceAll plus occurrence is rejected as a mode/item conflict",
+      "top-level hidden fields are removed before canonical schema validation",
+      "hidden mode conflicts with appendContent, edits, or symbol/content mode before parsing stringified edits",
+      "top-level startLine or endLine is rejected before mode resolution"
+    ],
+    "equivalence_reference": "Every successful folded request must normalize to the same one-item canonical request as the corresponding explicit edits[] fixture."
+  },
+  "fixture_table": {
+    "table_id": "TBL-V049-CONTRACT-FIXTURES-001",
+    "default_boundaries": ["opencode-real-registration", "pi-real-registration", "subc-trusted", "subc-untrusted"],
+    "fixtures": [
+      {"id": "FX-V049-001", "class": "path-alias", "case": "legacy-only path/filePath", "expected": "canonical result; no legacy property after normalization"},
+      {"id": "FX-V049-002", "class": "path-alias", "case": "equal dual path/filePath", "expected": "success retaining path"},
+      {"id": "FX-V049-003", "class": "path-alias", "case": "unequal dual path/filePath", "expected": "invalid_request naming both; zero mutation"},
+      {"id": "FX-V049-004", "class": "toPath-alias", "case": "legacy-only toFile", "expected": "canonical toPath result"},
+      {"id": "FX-V049-005", "class": "toPath-alias", "case": "unequal toPath/toFile", "expected": "invalid_request naming both; zero mutation"},
+      {"id": "FX-V049-006", "class": "edit-mode", "case": "append-only", "expected": "success"},
+      {"id": "FX-V049-007", "class": "edit-mode", "case": "non-empty explicit edits array", "expected": "success"},
+      {"id": "FX-V049-008", "class": "edit-mode", "case": "symbol without content", "expected": "invalid_request naming content; zero mutation"},
+      {"id": "FX-V049-009", "class": "edit-mode", "case": "content without symbol", "expected": "invalid_request naming symbol; zero mutation"},
+      {"id": "FX-V049-010", "class": "edit-mode", "case": "valid path only", "expected": "invalid_request exactly one mode required; no preview or mutation"},
+      {"id": "FX-V049-011", "class": "edit-mode", "case": "each pair of append, edits, symbol/content, hidden modes", "expected": "invalid_request naming conflicting fields; zero mutation"},
+      {"id": "FX-V049-012", "class": "edit-mode", "case": "malformed stringified edits", "expected": "invalid_request edits JSON error; zero mutation"},
+      {"id": "FX-V049-013", "class": "edit-mode", "case": "stringified edits with non-array root", "expected": "invalid_request edits array error; zero mutation"},
+      {"id": "FX-V049-014", "class": "batch-item", "case": "empty edits array", "expected": "invalid_request edits must be non-empty; zero mutation"},
+      {"id": "FX-V049-015", "class": "batch-item", "case": "empty, non-object, incomplete, wrong-typed, mixed, or unknown item", "expected": "invalid_request naming edits[index]; zero mutation"},
+      {"id": "FX-V049-016", "class": "batch-item", "case": "replaceAll plus occurrence", "expected": "invalid_request naming edits[index]; zero mutation"},
+      {"id": "FX-V049-017", "class": "line-range", "case": "valid 1-based inclusive item", "expected": "success"},
+      {"id": "FX-V049-018", "class": "line-range", "case": "top-level startLine alone", "expected": "nesting invalid_request before mode handling"},
+      {"id": "FX-V049-019", "class": "line-range", "case": "top-level endLine alone", "expected": "nesting invalid_request before mode handling"},
+      {"id": "FX-V049-020", "class": "line-range", "case": "top-level startLine/endLine/content", "expected": "nesting invalid_request before unknown stripping"},
+      {"id": "FX-V049-021", "class": "line-range", "case": "top-level line field mixed with every canonical mode", "expected": "nesting invalid_request before mode conflict/no-mode handling"},
+      {"id": "FX-V049-022", "class": "fold", "case": "hidden oldString/newString", "expected": "same normalized request and result as explicit one-item edits"},
+      {"id": "FX-V049-023", "class": "fold", "case": "hidden replaceAll true", "expected": "same multi-match result as explicit item"},
+      {"id": "FX-V049-024", "class": "fold", "case": "hidden occurrence 1 and 2", "expected": "same 1-based selection as explicit item"},
+      {"id": "FX-V049-025", "class": "fold", "case": "hidden replaceAll plus occurrence", "expected": "invalid_request; zero mutation"},
+      {"id": "FX-V049-026", "class": "scalar", "case": "complete replaceAll accepted and rejected domain", "expected": "only listed values normalize"},
+      {"id": "FX-V049-027", "class": "scalar", "case": "complete occurrence lexical matrix", "expected": "only listed values normalize; zero invalid"},
+      {"id": "FX-V049-028", "class": "item-alias", "case": "oldText/newText and canonical-wins collision", "expected": "canonical item shape and canonical type validation"},
+      {"id": "FX-V049-029", "class": "message", "case": "ambiguous match guidance", "expected": "contains occurrence and 1-based; excludes 0-based and 0-indexed"},
+      {"id": "FX-V049-030", "class": "boundary", "case": "legacy-only sentinel through real host registration", "expected": "preparation sees alias before schema validation"}
+    ],
+    "atomicity": "All invalid execution fixtures fail before permission, formatter, backup, diff, preview, or mutation. Preview-capable boundaries must also prove unchanged mutation state."
+  },
+  "distribution_artifact_manifest": {
+    "manifest_id": "MAN-V049-DISTRIBUTION-ARTIFACTS-001",
+    "release_version": "0.49.0",
+    "versioning_rule": "Each published package and platform binary is independently identified and must be released at v0.49.0; no artifact may silently retain a v0.48 version while participating in the v0.49 surface.",
+    "artifacts": [
+      {"id": "DIST-V049-001", "kind": "npm-package", "name": "@cortexkit/aft-opencode", "source": "packages/opencode-plugin", "version": "0.49.0", "surface": "OpenCode registration and steering text"},
+      {"id": "DIST-V049-002", "kind": "npm-package", "name": "@cortexkit/aft-pi", "source": "packages/pi-plugin", "version": "0.49.0", "surface": "Pi registration and steering text"},
+      {"id": "DIST-V049-003", "kind": "npm-package", "name": "@cortexkit/aft-bridge", "source": "packages/aft-bridge", "version": "0.49.0", "surface": "shared transport and compatibility boundary support"},
+      {"id": "DIST-V049-004", "kind": "npm-package", "name": "@cortexkit/aft", "source": "packages/aft-cli", "version": "0.49.0", "surface": "CLI setup, doctor, and release checks"},
+      {"id": "DIST-V049-005", "kind": "rust-package-and-binary", "name": "agent-file-tools", "source": "crates/aft", "version": "0.49.0", "surface": "Rust translation, validation, and one-based execution"},
+      {"id": "DIST-V049-006", "kind": "generated-schema", "name": "subc_tool_schemas.json", "source": "crates/aft/src/subc_tool_schemas.json", "version": "0.49.0 schema artifact", "owner": "final integration slice; never regenerate in S0"},
+      {"id": "DIST-V049-007", "kind": "release-test-manifest", "name": "weak-model-battery-v0.49", "source": "later slice artifact", "version": "0.49.0", "status": "planned; immutable model/version and attempts required"},
+      {"id": "DIST-V049-008", "kind": "external-prerequisite", "name": "OpenCode path-only renderer", "source": "upstream OpenCode", "version": "must be compatible with v0.49.0", "status": "not a repository artifact; release-blocking dependency"}
+    ],
+    "platform_binary_matrix": [
+      {"id": "DIST-V049-PLAT-001", "package": "@cortexkit/aft-darwin-arm64", "version": "0.49.0"},
+      {"id": "DIST-V049-PLAT-002", "package": "@cortexkit/aft-darwin-x64", "version": "0.49.0"},
+      {"id": "DIST-V049-PLAT-003", "package": "@cortexkit/aft-linux-arm64", "version": "0.49.0"},
+      {"id": "DIST-V049-PLAT-004", "package": "@cortexkit/aft-linux-x64", "version": "0.49.0"},
+      {"id": "DIST-V049-PLAT-005", "package": "@cortexkit/aft-win32-arm64", "version": "0.49.0"},
+      {"id": "DIST-V049-PLAT-006", "package": "@cortexkit/aft-win32-x64", "version": "0.49.0"}
+    ]
+  },
+  "cross_section_references": [
+    {"id": "REF-V049-001", "from": "interfaces.canonical_path_property_rule", "to": "INV-V049-CANONICAL-PATH-001"},
+    {"id": "REF-V049-002", "from": "interfaces.shared_surface_parity", "to": "INV-V049-SHARED-TOOLS-001"},
+    {"id": "REF-V049-003", "from": "compatibility_boundary", "to": "MAN-V049-REGISTRATION-PROFILES-001"},
+    {"id": "REF-V049-004", "from": "edit_normalization_and_validation.scalar_coercion", "to": "INV-V049-COMPATIBILITY-SCALARS-001"},
+    {"id": "REF-V049-005", "from": "edit_normalization_and_validation.hidden_single_edit_mode", "to": "FOLD-V049-HIDDEN-SINGLE-EDIT-001"},
+    {"id": "REF-V049-006", "from": "error_contract", "to": "TBL-V049-CONTRACT-FIXTURES-001"},
+    {"id": "REF-V049-007", "from": "release_dependency", "to": "MAN-V049-DISTRIBUTION-ARTIFACTS-001"}
+  ],
+  "open_assumptions": [
+    {"id": "OA-V049-001", "statement": "The repository does not establish that OpenCode or Pi exposes a raw-argument preparation hook before schema validation and unknown-property stripping. This is a capability to prove at a real registration boundary, not an established host fact."},
+    {"id": "OA-V049-002", "statement": "Production cache-key observability is unresolved. No checked repository artifact in S0 proves the measured prefix-cache invalidation behavior or exposes production cache-key telemetry; later release evidence must measure or explicitly report this gap."},
+    {"id": "OA-V049-003", "statement": "Preview support and mutation-state observability for every host and subc command are not established by the schema artifact. The capability inventory marks these rows for boundary verification rather than asserting preview support."},
+    {"id": "OA-V049-004", "statement": "The upstream OpenCode renderer version that displays path-only edit and write calls is external to this repository and remains a release prerequisite."},
+    {"id": "OA-V049-005", "statement": "Dynamic registration sets vary with surface, disabled_tools, backup, bash, search, semantic, and inspect configuration. The profile manifest records the predicates; it is not evidence that every optional branch is enabled in production."},
+    {"id": "OA-V049-006", "statement": "The generated subc schema artifact remains the v0.48 baseline during S0. The v0.49 bytes and drift check belong to the final integration slice."}
+  ]
+}
