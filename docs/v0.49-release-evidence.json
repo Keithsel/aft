@@ -1,0 +1,313 @@
+{
+  "artifact_id": "ART-V049-S6-ACTIVATION-EVIDENCE-001",
+  "artifact_version": "0.49.0",
+  "source_commit": "3932eef9bbf782692a4689a9af292d5b37d164c0",
+  "previous_version": "0.48.1",
+  "candidate_version": "0.49.0",
+  "capture_rule": "Each prefix and generated-subc value is a complete byte snapshot. A valid profile has exactly old -> candidate and no mixed snapshot.",
+  "transitions": [
+    {
+      "profile_id": "REG-V049-OC-MIN",
+      "harness": "opencode",
+      "activation": {
+        "mechanism": "OpenCode plugin package entry",
+        "entry": "@cortexkit/aft-opencode@0.49.0"
+      },
+      "staging": {
+        "mechanism": "OpenCode plugin package entry",
+        "disposable_root": "<disposable-profile-root>",
+        "atomic_replacement": true
+      },
+      "steps": [
+        {
+          "state": "old",
+          "artifact_version": "0.48.1",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 991,
+            "sha256": "6aa7f6b3f1f3f22b0d14fa1f9e4310f5d6fca79e49a71c981d34f6831cc7f332"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 43483,
+            "sha256": "2689a18af79d3e1c78e091b29bfbc52814b220cebb8612c861a682793c28dc0d"
+          }
+        },
+        {
+          "state": "candidate",
+          "artifact_version": "0.49.0",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 991,
+            "sha256": "0d4a63fdfbb66351c7ff82557afd295a6a54325d002549650958e4f6efec29a5"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 42214,
+            "sha256": "f4ab0fbe3cfe967bca44f917700b264dc031a7b2e076be24e6d3fcc4ff53e1ee"
+          }
+        }
+      ],
+      "transition_count": 1,
+      "mixed_surface": false,
+      "cache": {
+        "production_key_observable": false,
+        "transition_only": true
+      }
+    },
+    {
+      "profile_id": "REG-V049-OC-REC",
+      "harness": "opencode",
+      "activation": {
+        "mechanism": "OpenCode plugin package entry",
+        "entry": "@cortexkit/aft-opencode@0.49.0"
+      },
+      "staging": {
+        "mechanism": "OpenCode plugin package entry",
+        "disposable_root": "<disposable-profile-root>",
+        "atomic_replacement": true
+      },
+      "steps": [
+        {
+          "state": "old",
+          "artifact_version": "0.48.1",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1195,
+            "sha256": "87da524241cc4dad6500910af8dd6a6bbb5902db79e7020b2da0faddd7d34857"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 43483,
+            "sha256": "2689a18af79d3e1c78e091b29bfbc52814b220cebb8612c861a682793c28dc0d"
+          }
+        },
+        {
+          "state": "candidate",
+          "artifact_version": "0.49.0",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1195,
+            "sha256": "a8b9c7ca13785beac5738d2b1f982c81d0d02e46064b71e040bb84915508afa6"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 42214,
+            "sha256": "f4ab0fbe3cfe967bca44f917700b264dc031a7b2e076be24e6d3fcc4ff53e1ee"
+          }
+        }
+      ],
+      "transition_count": 1,
+      "mixed_surface": false,
+      "cache": {
+        "production_key_observable": false,
+        "transition_only": true
+      }
+    },
+    {
+      "profile_id": "REG-V049-OC-ALL",
+      "harness": "opencode",
+      "activation": {
+        "mechanism": "OpenCode plugin package entry",
+        "entry": "@cortexkit/aft-opencode@0.49.0"
+      },
+      "staging": {
+        "mechanism": "OpenCode plugin package entry",
+        "disposable_root": "<disposable-profile-root>",
+        "atomic_replacement": true
+      },
+      "steps": [
+        {
+          "state": "old",
+          "artifact_version": "0.48.1",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1617,
+            "sha256": "116d2fb40536bb3bd27212e0224522a11a72c69cb9f9e075c2e2e85723ba6a10"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 43483,
+            "sha256": "2689a18af79d3e1c78e091b29bfbc52814b220cebb8612c861a682793c28dc0d"
+          }
+        },
+        {
+          "state": "candidate",
+          "artifact_version": "0.49.0",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1617,
+            "sha256": "69daf46f26ac2aefeb9ea639ecaab6e8592e3b8a4b724febe1757c51b09864b7"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 42214,
+            "sha256": "f4ab0fbe3cfe967bca44f917700b264dc031a7b2e076be24e6d3fcc4ff53e1ee"
+          }
+        }
+      ],
+      "transition_count": 1,
+      "mixed_surface": false,
+      "cache": {
+        "production_key_observable": false,
+        "transition_only": true
+      }
+    },
+    {
+      "profile_id": "REG-V049-PI-MIN",
+      "harness": "pi",
+      "activation": {
+        "mechanism": "Pi extension installer",
+        "command": "pi install @cortexkit/aft-pi@0.49.0"
+      },
+      "staging": {
+        "mechanism": "Pi extension installer",
+        "disposable_root": "<disposable-profile-root>",
+        "atomic_replacement": true
+      },
+      "steps": [
+        {
+          "state": "old",
+          "artifact_version": "0.48.1",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1153,
+            "sha256": "9a32592b21bc2b2bf60d03b851f5ef87d9aa6a2570fe36bb026e3a60a75922e5"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 43483,
+            "sha256": "2689a18af79d3e1c78e091b29bfbc52814b220cebb8612c861a682793c28dc0d"
+          }
+        },
+        {
+          "state": "candidate",
+          "artifact_version": "0.49.0",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1153,
+            "sha256": "e96ad30529737636d8c7b020a0e6e546a04270c6c45ff73596a71f5c20c32c31"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 42214,
+            "sha256": "f4ab0fbe3cfe967bca44f917700b264dc031a7b2e076be24e6d3fcc4ff53e1ee"
+          }
+        }
+      ],
+      "transition_count": 1,
+      "mixed_surface": false,
+      "cache": {
+        "production_key_observable": false,
+        "transition_only": true
+      }
+    },
+    {
+      "profile_id": "REG-V049-PI-REC",
+      "harness": "pi",
+      "activation": {
+        "mechanism": "Pi extension installer",
+        "command": "pi install @cortexkit/aft-pi@0.49.0"
+      },
+      "staging": {
+        "mechanism": "Pi extension installer",
+        "disposable_root": "<disposable-profile-root>",
+        "atomic_replacement": true
+      },
+      "steps": [
+        {
+          "state": "old",
+          "artifact_version": "0.48.1",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1351,
+            "sha256": "9673b77843fd2c98b25ab48edb6994f483827986dfd323c893f37ee8e740e652"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 43483,
+            "sha256": "2689a18af79d3e1c78e091b29bfbc52814b220cebb8612c861a682793c28dc0d"
+          }
+        },
+        {
+          "state": "candidate",
+          "artifact_version": "0.49.0",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1351,
+            "sha256": "24c45d93be27b3114c7924f85eadaaf3fdf3258bfbaec63d28f28391b3c42948"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 42214,
+            "sha256": "f4ab0fbe3cfe967bca44f917700b264dc031a7b2e076be24e6d3fcc4ff53e1ee"
+          }
+        }
+      ],
+      "transition_count": 1,
+      "mixed_surface": false,
+      "cache": {
+        "production_key_observable": false,
+        "transition_only": true
+      }
+    },
+    {
+      "profile_id": "REG-V049-PI-ALL",
+      "harness": "pi",
+      "activation": {
+        "mechanism": "Pi extension installer",
+        "command": "pi install @cortexkit/aft-pi@0.49.0"
+      },
+      "staging": {
+        "mechanism": "Pi extension installer",
+        "disposable_root": "<disposable-profile-root>",
+        "atomic_replacement": true
+      },
+      "steps": [
+        {
+          "state": "old",
+          "artifact_version": "0.48.1",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1941,
+            "sha256": "b56024dda1d1d97727475ef053a0c76d33140e27767e6fcef789168e16933124"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 43483,
+            "sha256": "2689a18af79d3e1c78e091b29bfbc52814b220cebb8612c861a682793c28dc0d"
+          }
+        },
+        {
+          "state": "candidate",
+          "artifact_version": "0.49.0",
+          "agent_prefix": {
+            "complete": true,
+            "byte_length": 1941,
+            "sha256": "3516c32737f8f578b3407f86b1b2f240cb06997795afd5f8a36dec9c9e37b7a5"
+          },
+          "generated_subc": {
+            "complete": true,
+            "byte_length": 42214,
+            "sha256": "f4ab0fbe3cfe967bca44f917700b264dc031a7b2e076be24e6d3fcc4ff53e1ee"
+          }
+        }
+      ],
+      "transition_count": 1,
+      "mixed_surface": false,
+      "cache": {
+        "production_key_observable": false,
+        "transition_only": true
+      }
+    }
+  ],
+  "atomicity": {
+    "scope": "Each distribution artifact and each registration profile is atomic within its own staging operation.",
+    "not_claimed": "No global transaction is claimed across hosts, registries, documentation hosting, or end-user installations."
+  },
+  "cache_observability": {
+    "policy": "Claim exactly one invalidation only when a production cache key is observable and changes exactly once.",
+    "when_unobservable": "Record the atomic agent-surface transition only; do not fabricate an invalidation count.",
+    "production_key_required_for_count": true
+  }
+}

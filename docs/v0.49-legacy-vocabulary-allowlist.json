@@ -377,8 +377,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 1467, column 77",
-      "line": 1467,
+      "location": "line 1501, column 77",
+      "line": 1501,
       "column": 77,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -386,8 +386,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 1515, column 79",
-      "line": 1515,
+      "location": "line 1549, column 79",
+      "line": 1549,
       "column": 79,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -395,8 +395,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 1600, column 38",
-      "line": 1600,
+      "location": "line 1634, column 38",
+      "line": 1634,
       "column": 38,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -404,8 +404,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 1980, column 39",
-      "line": 1980,
+      "location": "line 2014, column 39",
+      "line": 2014,
       "column": 39,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -413,8 +413,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2027, column 56",
-      "line": 2027,
+      "location": "line 2061, column 56",
+      "line": 2061,
       "column": 56,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -422,8 +422,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2072, column 42",
-      "line": 2072,
+      "location": "line 2106, column 42",
+      "line": 2106,
       "column": 42,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -431,8 +431,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2077, column 42",
-      "line": 2077,
+      "location": "line 2111, column 42",
+      "line": 2111,
       "column": 42,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -440,8 +440,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2214, column 42",
-      "line": 2214,
+      "location": "line 2248, column 42",
+      "line": 2248,
       "column": 42,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -449,8 +449,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2221, column 64",
-      "line": 2221,
+      "location": "line 2255, column 64",
+      "line": 2255,
       "column": 64,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -458,8 +458,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2225, column 41",
-      "line": 2225,
+      "location": "line 2259, column 41",
+      "line": 2259,
       "column": 41,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -467,8 +467,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2231, column 62",
-      "line": 2231,
+      "location": "line 2265, column 62",
+      "line": 2265,
       "column": 62,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -476,8 +476,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2236, column 14",
-      "line": 2236,
+      "location": "line 2270, column 14",
+      "line": 2270,
       "column": 14,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -485,8 +485,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2250, column 14",
-      "line": 2250,
+      "location": "line 2284, column 14",
+      "line": 2284,
       "column": 14,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -494,8 +494,8 @@
     },
     {
       "path": "crates/aft/src/subc_translate.rs",
-      "location": "line 2314, column 18",
-      "line": 2314,
+      "location": "line 2348, column 18",
+      "line": 2348,
       "column": 18,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -10924,6 +10924,42 @@
       "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
     },
     {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 37, column 18",
+      "line": 37,
+      "column": 18,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 37, column 30",
+      "line": 37,
+      "column": 30,
+      "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 200, column 81",
+      "line": 200,
+      "column": 81,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 200, column 90",
+      "line": 200,
+      "column": 90,
+      "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
       "path": "scripts/capture-subc-parity.ts",
       "location": "line 146, column 59",
       "line": 146,
@@ -12236,42 +12272,6 @@
       "token": "filePath",
       "class": "internal-compatibility",
       "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
-    },
-    {
-      "path": "scripts/audit-v049-agent-surface.ts",
-      "location": "line 37, column 18",
-      "line": 37,
-      "column": 18,
-      "token": "filePath",
-      "class": "audit-implementation",
-      "reason": "The audit or capture implementation names the vocabulary it checks."
-    },
-    {
-      "path": "scripts/audit-v049-agent-surface.ts",
-      "location": "line 37, column 30",
-      "line": 37,
-      "column": 30,
-      "token": "toFile",
-      "class": "audit-implementation",
-      "reason": "The audit or capture implementation names the vocabulary it checks."
-    },
-    {
-      "path": "scripts/audit-v049-agent-surface.ts",
-      "location": "line 200, column 81",
-      "line": 200,
-      "column": 81,
-      "token": "filePath",
-      "class": "audit-implementation",
-      "reason": "The audit or capture implementation names the vocabulary it checks."
-    },
-    {
-      "path": "scripts/audit-v049-agent-surface.ts",
-      "location": "line 200, column 90",
-      "line": 200,
-      "column": 90,
-      "token": "toFile",
-      "class": "audit-implementation",
-      "reason": "The audit or capture implementation names the vocabulary it checks."
     }
   ]
 }
