@@ -6,6 +6,8 @@
 
 use std::path::Path;
 
+use serde_json::Value;
+
 use crate::context::AppContext;
 use crate::edit::{self, line_col_to_byte};
 use crate::protocol::{RawRequest, Response};
@@ -227,7 +229,7 @@ fn resolve_edit(
             .or_else(|| edit_val.get("newString"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let occurrence = edit_val.get("occurrence").and_then(|v| v.as_u64());
+        let raw_occurrence_value = edit_val.get("occurrence");
         let replace_all = edit_val
             .get("replace_all")
             .or_else(|| edit_val.get("replaceAll"))
@@ -244,6 +246,44 @@ fn resolve_edit(
                 ),
             ));
         }
+
+        let occurrence = match raw_occurrence_value {
+            None => None,
+            Some(Value::Number(number)) => {
+                let value = number.as_u64().or_else(|| {
+                    number.as_f64().and_then(|value| {
+                        (value.is_finite()
+                            && value.fract() == 0.0
+                            && value >= 1.0
+                            && value <= usize::MAX as f64)
+                            .then_some(value as u64)
+                    })
+                });
+                match value {
+                    Some(value) if value >= 1 => Some((value - 1) as usize),
+                    _ => {
+                        return Err(Response::error(
+                            req_id,
+                            "invalid_request",
+                            format!(
+                                "batch: edit[{}] 'occurrence' must be a positive integer (1-based)",
+                                index
+                            ),
+                        ));
+                    }
+                }
+            }
+            Some(_) => {
+                return Err(Response::error(
+                    req_id,
+                    "invalid_request",
+                    format!(
+                        "batch: edit[{}] 'occurrence' must be a positive integer (1-based)",
+                        index
+                    ),
+                ));
+            }
+        };
 
         let fuzzy_matches = crate::fuzzy_match::find_all_fuzzy(source, match_str);
 
@@ -299,15 +339,14 @@ fn resolve_edit(
         }
 
         if let Some(occ) = occurrence {
-            let occ = occ as usize;
             if occ >= fuzzy_matches.len() {
                 return Err(Response::error(
                     req_id,
                     "batch_edit_failed",
                     format!(
-                        "batch: edit[{}] occurrence {} out of range (found {} occurrences; 'occurrence' is 0-indexed)",
+                        "batch: edit[{}] occurrence {} out of range (found {} occurrences; 'occurrence' is 1-based)",
                         index,
-                        occ,
+                        occ + 1,
                         fuzzy_matches.len()
                     ),
                 ));
@@ -325,7 +364,7 @@ fn resolve_edit(
                 req_id,
                 "batch_edit_failed",
                 format!(
-                    "batch: edit[{}] match '{}' is ambiguous ({} occurrences, expected 1). Use 'occurrence' (0-indexed) to select one, or 'replaceAll': true to replace every occurrence.",
+                    "batch: edit[{}] match '{}' is ambiguous ({} occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.",
                     index,
                     match_str,
                     fuzzy_matches.len()

@@ -1,4 +1,7 @@
-import { prepareCanonicalPathArguments } from "@cortexkit/aft-bridge";
+import {
+  prepareCanonicalEditArguments,
+  prepareCanonicalPathArguments,
+} from "@cortexkit/aft-bridge";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 
@@ -58,14 +61,9 @@ export function prepareOpenCodeArguments(
   toolName: string,
   rawArguments: unknown,
 ): Record<string, unknown> {
-  const raw =
-    rawArguments && typeof rawArguments === "object" && !Array.isArray(rawArguments)
-      ? (rawArguments as Record<string, unknown>)
-      : undefined;
-  // aft_edit's historical mode:"write" shim uses `file`, which is not a path
-  // alias and must reach the shim untouched.
-  if (bareToolName(toolName) === "edit" && raw?.mode === "write" && typeof raw.file === "string") {
-    return { ...raw };
+  const bare = bareToolName(toolName);
+  if (bare === "edit") {
+    return prepareCanonicalEditArguments(toolName, rawArguments);
   }
 
   const prepared = prepareCanonicalPathArguments(toolName, rawArguments);

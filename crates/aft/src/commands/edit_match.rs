@@ -18,7 +18,7 @@ use crate::protocol::{RawRequest, Response};
 ///   - `file` (string, required) — target file path or glob pattern (e.g. `**/*.ts`)
 ///   - `match` (string, required, non-empty) — literal string to find
 ///   - `replacement` (string, required) — replacement content
-///   - `occurrence` (integer, optional, 0-indexed) — select a specific occurrence (single-file only)
+///   - `occurrence` (integer, optional, 1-based) — select a specific occurrence (single-file only)
 ///   - `replace_all` (bool, optional) — replace all occurrences (default: false)
 ///   - `op` (string, optional) — when `append`, appends `append_content`/`appendContent`
 ///
@@ -1045,17 +1045,35 @@ fn handle_single_file_edit_match(
     replacement: &str,
     op_id: &str,
 ) -> Response {
-    let occurrence = req
-        .params
-        .get("occurrence")
-        .and_then(|v| v.as_i64())
-        .map(|v| v as usize);
+    let raw_occurrence = req.params.get("occurrence");
 
     let replace_all = req
         .params
         .get("replace_all")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+
+    if replace_all && raw_occurrence.is_some() {
+        return Response::error(
+            &req.id,
+            "invalid_request",
+            "edit_match: 'replaceAll' and 'occurrence' are mutually exclusive",
+        );
+    }
+
+    let occurrence = match raw_occurrence {
+        None => None,
+        Some(value) => match value.as_u64() {
+            Some(0) | None => {
+                return Response::error(
+                    &req.id,
+                    "invalid_request",
+                    "edit_match: 'occurrence' must be a positive integer (1-based)",
+                );
+            }
+            Some(value) => Some((value - 1) as usize),
+        },
+    };
 
     let path = match ctx.validate_path(&req.id, Path::new(file)) {
         Ok(path) => path,
@@ -1100,30 +1118,20 @@ fn handle_single_file_edit_match(
 
     let positions: Vec<usize> = fuzzy_matches.iter().map(|m| m.byte_start).collect();
 
-    // If occurrence specified but out of range (only relevant when not replace_all)
+    // If occurrence specified but out of range (only relevant when not replace_all).
     if !replace_all {
         if let Some(occ) = occurrence {
             if occ >= positions.len() {
-                // The most common miss is 1-based thinking: `occurrence: 1`
-                // aimed at the only (or Nth) match. Teach the indexing instead
-                // of just rejecting.
-                let hint = if occ == positions.len() {
-                    format!(
-                        " 'occurrence' is 0-indexed: the last occurrence is {}.",
-                        occ - 1
-                    )
-                } else {
-                    format!(
-                        " 'occurrence' is 0-indexed (valid range: 0-{}).",
-                        positions.len() - 1
-                    )
-                };
+                let hint = format!(
+                    " 'occurrence' is 1-based (valid range: 1-{}).",
+                    positions.len()
+                );
                 return Response::error(
                     &req.id,
                     "invalid_request",
                     format!(
                         "edit_match: occurrence {} out of range, file has {} occurrence(s).{}",
-                        occ,
+                        occ + 1,
                         positions.len(),
                         hint
                     ),
@@ -1141,7 +1149,7 @@ fn handle_single_file_edit_match(
                 let line = source[..byte_pos].matches('\n').count();
                 let context = build_context(&source, line, 2);
                 serde_json::json!({
-                    "index": idx,
+                    "index": idx + 1,
                     "line": line + 1,
                     "context": context,
                 })
@@ -1152,7 +1160,7 @@ fn handle_single_file_edit_match(
             &req.id,
             "ambiguous_match",
             format!(
-                "Found {} matches. Use 'occurrence' (0-indexed) to select one, or 'replaceAll: true' to replace all.",
+                "Found {} matches. Use 'occurrence' (1-based) to select one, or 'replaceAll: true' to replace all.",
                 occurrences.len()
             ),
             serde_json::json!({

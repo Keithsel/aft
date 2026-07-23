@@ -11,6 +11,7 @@ import type {
 } from "@cortexkit/aft-bridge";
 import {
   formatBridgeErrorMessage,
+  prepareCanonicalEditArguments,
   prepareCanonicalPathArguments,
   timeoutForCommand,
 } from "@cortexkit/aft-bridge";
@@ -62,7 +63,10 @@ export function withPathAliasPreparation<
 >(tool: ToolDefinition<TParams, TDetails, TState>): ToolDefinition<TParams, TDetails, TState> {
   const existing = tool.prepareArguments;
   const prepare = (args: unknown): Static<TParams> => {
-    const prepared = prepareCanonicalPathArguments(tool.name, args);
+    const prepared =
+      tool.name === "edit"
+        ? prepareCanonicalEditArguments(tool.name, args)
+        : prepareCanonicalPathArguments(tool.name, args);
     return (existing ? existing(prepared) : prepared) as Static<TParams>;
   };
   return {

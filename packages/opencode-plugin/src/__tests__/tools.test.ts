@@ -140,33 +140,20 @@ describe("Tool round-trips", () => {
     expect(batch.text).toContain('Symbol "Missing" not found: symbol not found');
   });
 
-  test("write tool creates a temp file and returns syntax_valid", async () => {
+  test("OpenCode-prefixed aft_edit rejects the retired mode/file form", async () => {
     createBridge();
     const tools = aftPrefixedTools(createPluginContext(pool));
     tmpDir = await mkdtemp(resolve(tmpdir(), "aft-test-"));
     sdkCtx = createMockSdkContext(tmpDir);
 
     const filePath = resolve(tmpDir, "written.ts");
-    const content = 'export function greetWorld(): string {\n  return "hello world";\n}\n';
-
-    const resultStr = await tools.aft_edit.execute(
-      {
-        mode: "write",
-        file: filePath,
-        content,
-        create_dirs: false,
-      },
-      sdkCtx,
-    );
-    const result = JSON.parse(resultStr);
-
-    expect(result.success).toBe(true);
-    expect(result.syntax_valid).toBe(true);
-    expect(result.file).toBe(filePath);
-
-    // Verify the file was actually written
-    const fileContent = await readFile(filePath, "utf-8");
-    expect(fileContent).toBe(content);
+    await expect(
+      tools.aft_edit.execute(
+        { mode: "write", file: filePath, content: "export const value = 1;\n" },
+        sdkCtx,
+      ),
+    ).rejects.toThrow("retired");
+    expect(await readFile(filePath, "utf8").catch(() => "missing")).toBe("missing");
   });
 
   test("edit_symbol replaces a function and returns backup_id and syntax_valid", async () => {
@@ -179,17 +166,15 @@ describe("Tool round-trips", () => {
     const original = 'export function hello(): string {\n  return "hi";\n}\n';
 
     // First write the file
-    await tools.aft_edit.execute({ mode: "write", file: filePath, content: original }, sdkCtx);
+    await tools.aft_write.execute({ path: filePath, content: original }, sdkCtx);
 
     // Now replace the symbol
     const newContent = 'export function hello(): string {\n  return "world";\n}\n';
     const resultStr = toolResultText(
       await tools.aft_edit.execute(
         {
-          mode: "symbol",
-          file: filePath,
+          path: filePath,
           symbol: "hello",
-          operation: "replace",
           content: newContent,
         },
         sdkCtx,
@@ -216,7 +201,7 @@ describe("Tool round-trips", () => {
       "export function greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n";
 
     // Write original file
-    await editTools.aft_edit.execute({ mode: "write", file: filePath, content: original }, sdkCtx);
+    await editTools.aft_write.execute({ path: filePath, content: original }, sdkCtx);
 
     // Edit the symbol
     const replacement =
@@ -224,10 +209,8 @@ describe("Tool round-trips", () => {
     const editResult = toolResultText(
       await editTools.aft_edit.execute(
         {
-          mode: "symbol",
-          file: filePath,
+          path: filePath,
           symbol: "greet",
-          operation: "replace",
           content: replacement,
         },
         sdkCtx,
@@ -313,7 +296,7 @@ describe("Tool round-trips", () => {
       err = e as Error;
     }
     expect(err).toBeDefined();
-    expect(err!.message).toContain("no edit mode resolved");
+    expect(err!.message).toContain("symbol");
 
     // File must be untouched.
     const after = await readFile(filePath, "utf-8");

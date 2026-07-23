@@ -22,7 +22,6 @@ import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   coerceAliasedStringParam,
-  coerceBoolean,
   decodeFileUrl,
   formatEditSummary,
   formatReadFooter as formatSharedReadFooter,
@@ -644,9 +643,9 @@ export function registerHoistedTools(
 
           const filePathArg = mutationFilePathArg(params);
           if (typeof filePathArg !== "string") {
-            throw new Error("edit: missing required parameter `filePath`");
+            throw new Error("edit: missing required parameter `path`");
           }
-          if (params.appendContent === undefined) validateBatchEdits(params.edits);
+          if (params.edits !== undefined) validateBatchEdits(params.edits);
           // Resolve ~ and relative paths before the permission check. Pass the
           // original filePath string in the request so the path the agent
           // receives stays exactly as provided.
@@ -655,31 +654,10 @@ export function registerHoistedTools(
             restrictToProjectRoot: surface.restrictToProjectRoot,
           });
           const bridge = bridgeFor(ctx, extCtx.cwd);
-          const rawArgs: Record<string, unknown> = { filePath: filePathArg };
-          for (const key of ["appendContent", "oldString", "newString"] as const) {
+          const rawArgs: Record<string, unknown> = { path: filePathArg };
+          for (const key of ["appendContent", "edits", "symbol", "content"] as const) {
             if (argsRecord[key] !== undefined) rawArgs[key] = argsRecord[key];
           }
-          if (Array.isArray(argsRecord.edits)) {
-            rawArgs.edits = argsRecord.edits.map((item) => {
-              if (!item || typeof item !== "object" || Array.isArray(item)) return item;
-              const batchItem = item as Record<string, unknown>;
-              return batchItem.replaceAll === undefined
-                ? batchItem
-                : { ...batchItem, replaceAll: coerceBoolean(batchItem.replaceAll) };
-            });
-          } else if (argsRecord.edits !== undefined) {
-            rawArgs.edits = argsRecord.edits;
-          }
-          // Coerce at the boundary: stringified replaceAll must forward true (coerceBoolean).
-          if (params.replaceAll !== undefined)
-            rawArgs.replaceAll = coerceBoolean(params.replaceAll);
-          const occurrence = coerceOptionalInt(
-            params.occurrence,
-            "occurrence",
-            0,
-            Number.MAX_SAFE_INTEGER,
-          );
-          if (occurrence !== undefined) rawArgs.occurrence = occurrence;
 
           const response = await callToolCall(bridge, "edit", rawArgs, extCtx);
           if (response.success === false) {

@@ -231,7 +231,7 @@ fn edit_match_rejects_occurrences_that_are_out_of_range() {
     assert_error_code(&resp, "invalid_request");
     assert_eq!(
         resp["message"],
-        "edit_match: occurrence 5 out of range, file has 1 occurrence(s). 'occurrence' is 0-indexed (valid range: 0-0)."
+        "edit_match: occurrence 5 out of range, file has 1 occurrence(s). 'occurrence' is 1-based (valid range: 1-1)."
     );
 
     let status = aft.shutdown();

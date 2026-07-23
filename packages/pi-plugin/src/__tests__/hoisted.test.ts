@@ -76,7 +76,7 @@ describe("hoisted tool adapters", () => {
     expect(schemaHasProperty(editSchema, "edits")).toBe(true);
     expect(
       schemaAccepts(editSchema, {
-        filePath: "batch.ts",
+        path: "batch.ts",
         edits: [
           { oldString: "before", newString: "after", replaceAll: true },
           { startLine: 2, endLine: 3, content: "replacement" },
@@ -85,7 +85,7 @@ describe("hoisted tool adapters", () => {
     ).toBe(true);
     expect(
       schemaAccepts(editSchema, {
-        filePath: "batch.ts",
+        path: "batch.ts",
         edits: [{ startLine: "2", endLine: "3", content: "replacement" }],
       }),
     ).toBe(true);
@@ -322,18 +322,14 @@ describe("hoisted tool adapters", () => {
     });
 
     await executeTool(tools.get("edit")!, {
-      filePath: "README.md",
-      oldString: "ignored",
-      newString: "ignored",
+      path: "README.md",
       appendContent: "\nnext",
     });
 
     expect(calls.map((call) => call.command)).toEqual(["tool_call"]);
     expect(calls[0].params).toMatchObject({ name: "edit" });
     expect(toolArgs(calls[0])).toEqual({
-      filePath: "README.md",
-      oldString: "ignored",
-      newString: "ignored",
+      path: "README.md",
       appendContent: "\nnext",
     });
   });
@@ -355,7 +351,7 @@ describe("hoisted tool adapters", () => {
     });
 
     const result = (await executeTool(tools.get("edit")!, {
-      filePath: "batch.ts",
+      path: "batch.ts",
       edits: [
         {
           oldString: "before",
@@ -371,7 +367,7 @@ describe("hoisted tool adapters", () => {
     expect(calls.map((call) => call.command)).toEqual(["tool_call"]);
     expect(calls[0].params).toMatchObject({ name: "edit" });
     expect(toolArgs(calls[0])).toEqual({
-      filePath: "batch.ts",
+      path: "batch.ts",
       edits: [
         { oldString: "before", newString: "after", replaceAll: true },
         { startLine: 4, endLine: 6, content: "replacement" },
@@ -379,81 +375,13 @@ describe("hoisted tool adapters", () => {
     });
   });
 
-  test("edit gives appendContent precedence over edits and oldString/newString", async () => {
+  test("edit rejects requests that contain more than one mode", async () => {
     const { api, tools } = makeMockApi();
-    const { bridge, calls } = makeMockBridge((_command, params) => {
-      if (params.appendContent !== undefined) {
-        return { success: true, text: "append wins", diff: { additions: 1, deletions: 0 } };
-      }
-      if (params.edits !== undefined) {
-        return { success: true, text: "edits win", diff: { additions: 1, deletions: 1 } };
-      }
-      return { success: true, text: "replace wins", diff: { additions: 1, deletions: 1 } };
-    });
-    registerHoistedTools(api, makePluginContext(bridge), {
-      hoistRead: false,
-      hoistWrite: false,
-      hoistEdit: true,
-      hoistGrep: false,
-      restrictToProjectRoot: true,
-    });
-
-    const result = (await executeTool(tools.get("edit")!, {
-      filePath: "modes.ts",
-      appendContent: "\nnext",
-      edits: [{ startLine: 2, content: "ignored because append wins" }],
-      oldString: "before",
-      newString: "after",
-    })) as { content: Array<{ text: string }> };
-
-    expect(result.content[0].text).toBe("append wins");
-    expect(toolArgs(calls[0])).toEqual({
-      filePath: "modes.ts",
-      appendContent: "\nnext",
-      edits: [{ startLine: 2, content: "ignored because append wins" }],
-      oldString: "before",
-      newString: "after",
-    });
-  });
-
-  test("edit gives edits precedence over oldString/newString", async () => {
-    const { api, tools } = makeMockApi();
-    const { bridge, calls } = makeMockBridge((_command, params) => {
-      if (params.appendContent !== undefined) {
-        return { success: true, text: "append wins", diff: { additions: 1, deletions: 0 } };
-      }
-      if (params.edits !== undefined) {
-        return { success: true, text: "edits win", diff: { additions: 1, deletions: 1 } };
-      }
-      return { success: true, text: "replace wins", diff: { additions: 1, deletions: 1 } };
-    });
-    registerHoistedTools(api, makePluginContext(bridge), {
-      hoistRead: false,
-      hoistWrite: false,
-      hoistEdit: true,
-      hoistGrep: false,
-      restrictToProjectRoot: true,
-    });
-
-    const result = (await executeTool(tools.get("edit")!, {
-      filePath: "modes.ts",
-      edits: [{ oldString: "before", newString: "after" }],
-      oldString: "before",
-      newString: "after",
-    })) as { content: Array<{ text: string }> };
-
-    expect(result.content[0].text).toBe("edits win");
-    expect(toolArgs(calls[0])).toEqual({
-      filePath: "modes.ts",
-      edits: [{ oldString: "before", newString: "after" }],
-      oldString: "before",
-      newString: "after",
-    });
-  });
-
-  test("edit rejects invalid batch edit shapes with the batch error wording", async () => {
-    const { api, tools } = makeMockApi();
-    const { bridge } = makeMockBridge(() => ({ success: true, text: "unused" }));
+    const { bridge, calls } = makeMockBridge(() => ({
+      success: true,
+      text: "unexpected mutation",
+      diff: { additions: 1, deletions: 1 },
+    }));
     registerHoistedTools(api, makePluginContext(bridge), {
       hoistRead: false,
       hoistWrite: false,
@@ -464,10 +392,54 @@ describe("hoisted tool adapters", () => {
 
     await expect(
       executeTool(tools.get("edit")!, {
-        filePath: "broken.ts",
+        path: "modes.ts",
+        appendContent: "\nnext",
+        edits: [{ startLine: 2, endLine: 2, content: "ignored" }],
+      }),
+    ).rejects.toThrow(/conflicting modes/);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("edit rejects legacy find/replace fields combined with an explicit mode", async () => {
+    const { api, tools } = makeMockApi();
+    const { bridge, calls } = makeMockBridge(() => ({ success: true }));
+    registerHoistedTools(api, makePluginContext(bridge), {
+      hoistRead: false,
+      hoistWrite: false,
+      hoistEdit: true,
+      hoistGrep: false,
+      restrictToProjectRoot: true,
+    });
+
+    await expect(
+      executeTool(tools.get("edit")!, {
+        path: "modes.ts",
+        edits: [{ oldString: "before", newString: "after" }],
+        oldString: "before",
+        newString: "after",
+      }),
+    ).rejects.toThrow(/conflicting modes/);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("edit rejects invalid batch edit shapes before calling the bridge", async () => {
+    const { api, tools } = makeMockApi();
+    const { bridge, calls } = makeMockBridge(() => ({ success: true, text: "unused" }));
+    registerHoistedTools(api, makePluginContext(bridge), {
+      hoistRead: false,
+      hoistWrite: false,
+      hoistEdit: true,
+      hoistGrep: false,
+      restrictToProjectRoot: true,
+    });
+
+    await expect(
+      executeTool(tools.get("edit")!, {
+        path: "broken.ts",
         edits: [{ startLine: 2, content: "replacement" }],
       }),
-    ).rejects.toThrow("batch: edit[0] 'endLine' must be a positive integer (1-based)");
+    ).rejects.toThrow("edit: edits[0].endLine must be a positive integer");
+    expect(calls).toHaveLength(0);
   });
 
   test("edit accepts path as a compatibility alias without overriding filePath", async () => {
@@ -495,9 +467,8 @@ describe("hoisted tool adapters", () => {
       newString: "after",
     });
     expect(toolArgs(calls[0])).toEqual({
-      filePath: "alias.ts",
-      oldString: "before",
-      newString: "after",
+      path: "alias.ts",
+      edits: [{ oldString: "before", newString: "after" }],
     });
 
     expect(
@@ -541,7 +512,7 @@ describe("hoisted tool adapters", () => {
     });
 
     const result = (await executeTool(tools.get("edit")!, {
-      filePath: "src/app.ts",
+      path: "src/app.ts",
       oldString: "before",
       newString: "after",
     })) as { content: Array<{ text: string }>; details: { diagnostics?: unknown[] } };
@@ -549,9 +520,8 @@ describe("hoisted tool adapters", () => {
     expect(calls.map((call) => call.command)).toEqual(["tool_call"]);
     expect(calls[0].params).toMatchObject({ name: "edit" });
     expect(toolArgs(calls[0])).toMatchObject({
-      filePath: "src/app.ts",
-      oldString: "before",
-      newString: "after",
+      path: "src/app.ts",
+      edits: [{ oldString: "before", newString: "after" }],
     });
     expect(toolArgs(calls[0])).not.toHaveProperty("diagnostics");
     expect(result.content[0].text).not.toContain("LSP diagnostics");
@@ -580,7 +550,7 @@ describe("hoisted tool adapters", () => {
     );
 
     const result = (await executeTool(tools.get("edit")!, {
-      filePath: "src/app.ts",
+      path: "src/app.ts",
       oldString: "before",
       newString: "after",
     })) as { content: Array<{ text: string }>; details: { diagnostics?: unknown[] } };

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   InvalidRequestError,
   isWellFormedUnicodeString,
+  prepareCanonicalEditArguments,
   prepareCanonicalPathArguments,
 } from "../path-aliases.js";
 
@@ -102,5 +103,108 @@ describe("canonical path alias preparation", () => {
     expect(prepareCanonicalPathArguments("move", input)).toEqual({
       ...input,
     });
+  });
+});
+
+
+describe("edit boundary preparation", () => {
+  test("applies mode conflict precedence before parsing stringified edits", () => {
+    expect(() =>
+      prepareCanonicalEditArguments("edit", {
+        path: "src/main.ts",
+        appendContent: "append",
+        edits: "not-json",
+      }),
+    ).toThrow("conflicting modes");
+
+    expect(() =>
+      prepareCanonicalEditArguments("edit", {
+        path: "src/main.ts",
+        edits: "not-json",
+      }),
+    ).toThrow("valid JSON");
+    expect(() =>
+      prepareCanonicalEditArguments("edit", {
+        path: "src/main.ts",
+        edits: "[]",
+      }),
+    ).toThrow("must not be empty");
+  });
+
+  test("keeps canonical-only path validation after edit contract validation", () => {
+    expect(() =>
+      prepareCanonicalEditArguments("edit", {
+        path: 42,
+        startLine: 1,
+      }),
+    ).toThrow("startLine");
+    expect(() => prepareCanonicalEditArguments("edit", { path: 42 })).toThrow("exactly one of");
+    expect(() =>
+      prepareCanonicalEditArguments("edit", { path: 42, appendContent: "append" }),
+    ).toThrow("'path'");
+  });
+
+  test("uses the retired-form error only at the OpenCode-prefixed raw boundary", () => {
+    expect(() =>
+      prepareCanonicalEditArguments(
+        "aft_edit",
+        { mode: "write", file: "src/main.ts", content: "x" },
+      ),
+    ).toThrow("retired");
+
+    expect(() =>
+      prepareCanonicalEditArguments("edit", { mode: "write", file: "src/main.ts" }),
+    ).toThrow('Unrecognized keys: "file", "mode"');
+  });
+
+  test("normalizes item aliases and the complete scalar compatibility domains", () => {
+    const replaceAllValues: unknown[] = [
+      true,
+      false,
+      "true",
+      "TRUE",
+      "fAlSe",
+      1,
+      0,
+      "1",
+      "0",
+    ];
+    for (const value of replaceAllValues) {
+      const result = prepareCanonicalEditArguments("edit", {
+        path: "src/main.ts",
+        edits: [{ oldText: "before", newText: "after", replaceAll: value }],
+      });
+      const expected =
+        value === true ||
+        value === 1 ||
+        value === "1" ||
+        (typeof value === "string" && value.toLowerCase() === "true");
+      expect(result.edits).toEqual([
+        { oldString: "before", newString: "after", replaceAll: expected },
+      ]);
+    }
+
+    const result = prepareCanonicalEditArguments("edit", {
+      path: "src/main.ts",
+      edits: [{ oldString: "before", oldText: "legacy", occurrence: " +01 " }],
+    });
+    expect(result.edits).toEqual([{ oldString: "before", occurrence: 1 }]);
+
+    for (const value of [null, "", " \t"]) {
+      const omitted = prepareCanonicalEditArguments("edit", {
+        path: "src/main.ts",
+        edits: [{ oldString: "before", occurrence: value }],
+      });
+      expect(omitted.edits).toEqual([{ oldString: "before" }]);
+    }
+
+    for (const value of ["0", "00", "+0", "1.0", "1e0", "0x1", "-1", "9007199254740992"]) {
+      expect(() =>
+        prepareCanonicalEditArguments("edit", {
+          path: "src/main.ts",
+          edits: [{ oldString: "before", occurrence: value }],
+        }),
+      ).toThrow("occurrence");
+    }
   });
 });

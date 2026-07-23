@@ -122,9 +122,10 @@ fn normalize_path_arguments(bare_name: &str, args: Value) -> Result<Value, Trans
     };
 
     match bare_name {
-        "read" | "write" | "edit" | "move" | "import" => {
+        "read" | "write" | "move" | "import" => {
             normalize_path_alias_pair(&mut map, "path", "filePath", false)?;
         }
+        "edit" => normalize_edit_arguments(&mut map)?,
         "refactor" => {
             normalize_path_alias_pair(&mut map, "path", "filePath", false)?;
         }
@@ -143,6 +144,366 @@ fn normalize_path_arguments(bare_name: &str, args: Value) -> Result<Value, Trans
     }
 
     Ok(Value::Object(map))
+}
+
+fn normalize_edit_arguments(map: &mut Map<String, Value>) -> Result<(), TranslateError> {
+    normalize_edit_path_alias(map)?;
+
+    let supplied_line_fields = ["startLine", "endLine"]
+        .into_iter()
+        .filter(|key| map.contains_key(*key))
+        .collect::<Vec<_>>();
+    if !supplied_line_fields.is_empty() {
+        let fields = supplied_line_fields
+            .iter()
+            .map(|field| format!("'{field}'"))
+            .collect::<Vec<_>>()
+            .join(" and ");
+        return Err(invalid_request(format!(
+            "edit: top-level {fields} are invalid; line-range fields are valid only inside 'edits[]'. Use edits: [{{ startLine, endLine, content }}]."
+        )));
+    }
+
+    let unknown_root_keys = map
+        .keys()
+        .filter(|key| {
+            !matches!(
+                key.as_str(),
+                "path"
+                    | "filePath"
+                    | "appendContent"
+                    | "edits"
+                    | "symbol"
+                    | "content"
+                    | "oldString"
+                    | "newString"
+                    | "replaceAll"
+                    | "occurrence"
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unknown_root_keys.is_empty() {
+        return Err(invalid_request(format_unknown_keys(unknown_root_keys)));
+    }
+
+    let modes = edit_modes_present(map);
+    if modes.len() > 1 {
+        return Err(invalid_request(format!(
+            "edit: conflicting modes: {}",
+            modes.join(", ")
+        )));
+    }
+    let Some(mode) = modes.first().copied() else {
+        return Err(invalid_request(
+            "edit: exactly one of `appendContent`, `edits`, or `symbol` plus `content` is required",
+        ));
+    };
+
+    match mode {
+        "appendContent" => {
+            if !matches!(map.get("appendContent"), Some(Value::String(_))) {
+                return Err(invalid_request("edit: 'appendContent' must be a string"));
+            }
+        }
+        "edits" => {
+            let items = parse_edit_array(map.remove("edits"))?;
+            let normalized = items
+                .into_iter()
+                .enumerate()
+                .map(|(index, item)| normalize_edit_item(item, index))
+                .collect::<Result<Vec<_>, _>>()?;
+            map.insert(
+                "edits".to_string(),
+                Value::Array(normalized.into_iter().map(Value::Object).collect()),
+            );
+        }
+        "symbol/content" => {
+            if !matches!(map.get("symbol"), Some(Value::String(_))) {
+                return Err(invalid_request(
+                    "edit: 'symbol' must be a string when symbol mode is selected",
+                ));
+            }
+            if !matches!(map.get("content"), Some(Value::String(_))) {
+                return Err(invalid_request(
+                    "edit: symbol mode requires both 'symbol' and 'content' string properties",
+                ));
+            }
+        }
+        "oldString/newString" => {
+            let mut item = Map::new();
+            for key in ["oldString", "newString", "replaceAll", "occurrence"] {
+                if let Some(value) = map.get(key) {
+                    item.insert(key.to_string(), value.clone());
+                }
+                map.remove(key);
+            }
+            let normalized = normalize_edit_item(Value::Object(item), 0)?;
+            map.insert(
+                "edits".to_string(),
+                Value::Array(vec![Value::Object(normalized)]),
+            );
+        }
+        _ => unreachable!("edit mode list contains an unknown mode"),
+    }
+
+    let path = map
+        .get("path")
+        .ok_or_else(|| invalid_request("'path' is required"))?;
+    path_string(Some(path), "path")?;
+    Ok(())
+}
+
+fn normalize_edit_path_alias(map: &mut Map<String, Value>) -> Result<(), TranslateError> {
+    let has_path = map.contains_key("path");
+    let has_file_path = map.contains_key("filePath");
+    match (has_path, has_file_path) {
+        (true, true) => normalize_path_alias_pair(map, "path", "filePath", false),
+        (false, true) => normalize_path_alias_pair(map, "path", "filePath", false),
+        (false, false) | (true, false) => Ok(()),
+    }
+}
+
+fn edit_modes_present(map: &Map<String, Value>) -> Vec<&'static str> {
+    let mut modes = Vec::new();
+    if map.contains_key("appendContent") {
+        modes.push("appendContent");
+    }
+    if map.contains_key("edits") {
+        modes.push("edits");
+    }
+    if map.contains_key("symbol") || map.contains_key("content") {
+        modes.push("symbol/content");
+    }
+    if ["oldString", "newString", "replaceAll", "occurrence"]
+        .iter()
+        .any(|key| map.contains_key(*key))
+    {
+        modes.push("oldString/newString");
+    }
+    modes
+}
+
+fn format_unknown_keys(mut keys: Vec<String>) -> String {
+    keys.sort();
+    format!(
+        "Unrecognized keys: {}",
+        keys.iter()
+            .map(|key| format!("\"{key}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn parse_edit_array(value: Option<Value>) -> Result<Vec<Value>, TranslateError> {
+    let Some(value) = value else {
+        return Err(invalid_request("edit: 'edits' must be a non-empty array"));
+    };
+    let value = if let Value::String(raw) = value {
+        serde_json::from_str::<Value>(&raw).map_err(|_| {
+            invalid_request("edit: 'edits' must contain valid JSON representing an array")
+        })?
+    } else {
+        value
+    };
+    let Value::Array(items) = value else {
+        return Err(invalid_request(
+            "edit: 'edits' JSON must have an array root",
+        ));
+    };
+    if items.is_empty() {
+        return Err(invalid_request("edit: 'edits' array must not be empty"));
+    }
+    Ok(items)
+}
+
+fn normalize_edit_item(value: Value, index: usize) -> Result<Map<String, Value>, TranslateError> {
+    let Value::Object(mut item) = value else {
+        return Err(invalid_request(format!(
+            "edit: edits[{index}] must be an object"
+        )));
+    };
+
+    normalize_item_alias(&mut item, "oldString", "oldText");
+    normalize_item_alias(&mut item, "newString", "newText");
+
+    let has_find = ["oldString", "newString", "replaceAll", "occurrence"]
+        .iter()
+        .any(|key| item.contains_key(*key));
+    let has_range = ["startLine", "endLine", "content"]
+        .iter()
+        .any(|key| item.contains_key(*key));
+    if has_find && has_range {
+        return Err(invalid_request(format!(
+            "edit: edits[{index}] mixes find/replace and line-range fields"
+        )));
+    }
+
+    if has_find {
+        if !matches!(item.get("oldString"), Some(Value::String(_))) {
+            return Err(invalid_request(format!(
+                "edit: edits[{index}] requires string 'oldString'"
+            )));
+        }
+        if item.contains_key("newString")
+            && !matches!(item.get("newString"), Some(Value::String(_)))
+        {
+            return Err(invalid_request(format!(
+                "edit: edits[{index}].newString must be a string"
+            )));
+        }
+        coerce_edit_scalars(&mut item, index)?;
+        validate_edit_item_keys(&item, index)?;
+        return Ok(item);
+    }
+
+    if has_range {
+        for key in ["startLine", "endLine"] {
+            let valid = item
+                .get(key)
+                .and_then(Value::as_u64)
+                .is_some_and(|value| value >= 1 && value <= MAX_SAFE_INTEGER as u64);
+            if !valid {
+                return Err(invalid_request(format!(
+                    "edit: edits[{index}].{key} must be a positive integer"
+                )));
+            }
+        }
+        let start = item.get("startLine").and_then(Value::as_u64).unwrap();
+        let end = item.get("endLine").and_then(Value::as_u64).unwrap();
+        if start > end {
+            return Err(invalid_request(format!(
+                "edit: edits[{index}] requires startLine <= endLine"
+            )));
+        }
+        if !matches!(item.get("content"), Some(Value::String(_))) {
+            return Err(invalid_request(format!(
+                "edit: edits[{index}] requires string 'content'"
+            )));
+        }
+        validate_edit_item_keys(&item, index)?;
+        return Ok(item);
+    }
+
+    Err(invalid_request(format!(
+        "edit: edits[{index}] must be a find/replace or line-range item"
+    )))
+}
+
+fn normalize_item_alias(item: &mut Map<String, Value>, canonical: &str, legacy: &str) {
+    if let Some(legacy_value) = item.remove(legacy) {
+        if !item.contains_key(canonical) {
+            item.insert(canonical.to_string(), legacy_value);
+        }
+    }
+}
+
+fn validate_edit_item_keys(item: &Map<String, Value>, index: usize) -> Result<(), TranslateError> {
+    let unknown = item
+        .keys()
+        .filter(|key| {
+            !matches!(
+                key.as_str(),
+                "oldString"
+                    | "newString"
+                    | "replaceAll"
+                    | "occurrence"
+                    | "startLine"
+                    | "endLine"
+                    | "content"
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(invalid_request(format!(
+            "edit: edits[{index}] contains {}",
+            format_unknown_keys(unknown)
+        )))
+    }
+}
+
+fn coerce_edit_scalars(item: &mut Map<String, Value>, index: usize) -> Result<(), TranslateError> {
+    if item.contains_key("replaceAll") && item.contains_key("occurrence") {
+        return Err(invalid_request(format!(
+            "edit: edits[{index}] cannot contain both 'replaceAll' and 'occurrence'"
+        )));
+    }
+    if let Some(value) = item.get("replaceAll") {
+        let coerced = match value {
+            Value::Bool(value) => Some(*value),
+            Value::Number(number) if number.as_f64() == Some(0.0) => Some(false),
+            Value::Number(number) if number.as_f64() == Some(1.0) => Some(true),
+            Value::String(value) if value == "0" => Some(false),
+            Value::String(value) if value == "1" => Some(true),
+            Value::String(value) if value.eq_ignore_ascii_case("true") => Some(true),
+            Value::String(value) if value.eq_ignore_ascii_case("false") => Some(false),
+            _ => None,
+        };
+        let Some(coerced) = coerced else {
+            return Err(invalid_request(format!(
+                "edit: edits[{index}].replaceAll must be a boolean, true/false string, or 0/1"
+            )));
+        };
+        item.insert("replaceAll".to_string(), Value::Bool(coerced));
+    }
+
+    if item.contains_key("occurrence") {
+        let value = item.get("occurrence").cloned().unwrap();
+        match coerce_edit_occurrence(&value, index)? {
+            Some(value) => {
+                item.insert("occurrence".to_string(), Value::Number(value.into()));
+            }
+            None => {
+                item.remove("occurrence");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn coerce_edit_occurrence(value: &Value, index: usize) -> Result<Option<u64>, TranslateError> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let parsed = match value {
+        Value::Number(number) => number
+            .as_u64()
+            .filter(|value| *value <= MAX_SAFE_INTEGER as u64)
+            .or_else(|| {
+                number.as_f64().and_then(|value| {
+                    (value.is_finite()
+                        && value.fract() == 0.0
+                        && value >= 1.0
+                        && value <= MAX_SAFE_INTEGER as f64)
+                        .then_some(value as u64)
+                })
+            }),
+        Value::String(raw) => {
+            let trimmed = raw.trim_matches(|ch: char| ch.is_ascii_whitespace());
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            let digits = trimmed.strip_prefix('+').unwrap_or(trimmed);
+            if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+                None
+            } else {
+                digits
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|value| *value <= MAX_SAFE_INTEGER as u64)
+            }
+        }
+        _ => None,
+    };
+    match parsed {
+        Some(value) if value >= 1 => Ok(Some(value)),
+        _ => Err(invalid_request(format!(
+            "edit: edits[{index}].occurrence must be a positive integer"
+        ))),
+    }
 }
 
 fn unsupported_tool(message: impl Into<String>) -> TranslateError {
@@ -1902,6 +2263,81 @@ mod tests {
 
         assert_eq!(translated_content.len(), content_len);
         assert_eq!(translated_content.as_ptr(), content_ptr);
+    }
+
+    #[test]
+    fn edit_normalization_orders_contract_checks_before_path_resolution() {
+        let project = Path::new("/project");
+        let conflict = subc_translate_owned(
+            "edit",
+            serde_json::json!({
+                "path": "src/main.ts",
+                "appendContent": "x",
+                "edits": "not-json"
+            }),
+            project,
+        )
+        .expect_err("mode conflict");
+        assert_eq!(conflict.code, "invalid_request");
+        assert!(conflict.message.contains("conflicting modes"));
+
+        let line_error = subc_translate_owned(
+            "edit",
+            serde_json::json!({ "path": 42, "startLine": 1 }),
+            project,
+        )
+        .expect_err("top-level line range");
+        assert!(line_error.message.contains("startLine"));
+
+        let no_mode = subc_translate_owned("edit", serde_json::json!({ "path": "x" }), project)
+            .expect_err("missing mode");
+        assert!(no_mode.message.contains("exactly one of"));
+
+        let retired_fields = subc_translate_owned(
+            "edit",
+            serde_json::json!({ "mode": "write", "file": "src/main.ts" }),
+            project,
+        )
+        .expect_err("retired fields are ordinary unknown keys outside OpenCode aft_edit");
+        assert_eq!(
+            retired_fields.message,
+            "Unrecognized keys: \"file\", \"mode\""
+        );
+    }
+
+    #[test]
+    fn edit_normalization_accepts_aliases_and_rejects_ambiguous_scalars() {
+        let project = Path::new("/project");
+        let normalized = subc_translate_owned(
+            "edit",
+            serde_json::json!({
+                "filePath": "src/main.ts",
+                "edits": [{ "oldText": "before", "newText": "after", "occurrence": " +01 " }]
+            }),
+            project,
+        )
+        .expect("compatibility aliases");
+        let item = normalized
+            .args
+            .get("edits")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .expect("translated edit item");
+        assert_eq!(item.get("match").and_then(Value::as_str), Some("before"));
+        assert_eq!(item.get("occurrence").and_then(Value::as_u64), Some(1));
+
+        for value in ["0", "00", "+0", "1.0", "1e0", "0x1", "-1"] {
+            let error = subc_translate_owned(
+                "edit",
+                serde_json::json!({
+                    "path": "src/main.ts",
+                    "edits": [{ "oldString": "before", "occurrence": value }]
+                }),
+                project,
+            )
+            .expect_err("invalid occurrence spelling");
+            assert!(error.message.contains("occurrence"));
+        }
     }
 
     // supports_tool() gates whether run_tool_call translates or passes a name

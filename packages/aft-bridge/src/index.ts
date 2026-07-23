@@ -119,6 +119,7 @@ export {
 export {
   InvalidRequestError,
   isWellFormedUnicodeString,
+  prepareCanonicalEditArguments,
   prepareCanonicalPathArguments,
 } from "./path-aliases.js";
 export type { LegacyAftConfigSource, ResolvedAftConfigPaths } from "./paths.js";

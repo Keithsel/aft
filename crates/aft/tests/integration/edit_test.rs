@@ -782,14 +782,14 @@ fn edit_match_with_occurrence_selector() {
     let content = "const a = \"hello\";\nconst b = \"hello\";\nconst c = \"world\";\n";
     fs::write(&target, content).unwrap();
 
-    // Select occurrence index 1 (second match)
+    // Select occurrence 2 (the second match)
     let req = serde_json::json!({
         "id": "em-3",
         "command": "edit_match",
         "file": target.display().to_string(),
         "match": "hello",
         "replacement": "bye",
-        "occurrence": 1
+         "occurrence": 2
     });
     let resp = aft.send(&serde_json::to_string(&req).unwrap());
 
@@ -1542,7 +1542,7 @@ fn batch_ambiguity_error_mentions_occurrence_and_replace_all() {
 
     assert_eq!(resp["success"], false, "batch should fail: {resp:?}");
     let message = resp["message"].as_str().unwrap();
-    assert!(message.contains("'occurrence' (0-indexed)"));
+    assert!(message.contains("'occurrence' (1-based)"));
     assert!(message.contains("'replaceAll': true"));
     assert_eq!(fs::read_to_string(&target).unwrap(), original);
 

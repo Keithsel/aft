@@ -2,10 +2,8 @@
   "agent_args": {
     "edits": [
       {
-        "endLine": 1,
         "newString": "answer",
-        "oldString": "value",
-        "startLine": 1
+        "oldString": "value"
       }
     ],
     "filePath": "src/main.ts"

@@ -9,7 +9,6 @@
  * backup tracking, formatting, and inline diagnostics.
  */
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { coerceBoolean, coerceStringArray } from "@cortexkit/aft-bridge";
 import type { ToolDefinition, ToolResult } from "@opencode-ai/plugin";
@@ -18,7 +17,6 @@ import { resolveBashConfig } from "../config.js";
 import { prepareToolMap } from "../normalize-schemas.js";
 import type { PluginContext } from "../types.js";
 import {
-  callBridge,
   callToolCall,
   coerceOptionalInt,
   optionalInt,
@@ -271,31 +269,6 @@ function inferBeforeStart(ops: DiffOp[], from: number, beforeLen: number): numbe
 }
 
 const z = tool.schema;
-// Diagnostics on edit are config-driven only (`lsp.diagnostics_on_edit`).
-// There is deliberately NO per-call `diagnostics` param: agents never used it,
-// and the agent-facing diagnostics paths are the status bar (passive,
-// automatic E/W on tool results) and aft_inspect (active pull). The config
-// knob remains for users whose models won't call aft_inspect.
-function diagnosticsOnEditDefault(ctx: PluginContext): boolean {
-  return ctx.config.lsp?.diagnostics_on_edit ?? false;
-}
-
-async function readCurrentFileForPreview(filePath: string): Promise<string> {
-  try {
-    return await fs.promises.readFile(filePath, "utf-8");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "ENOENT"
-    ) {
-      return "";
-    }
-    throw error;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Tool descriptions focus on behavior, modes, and return values.
 // Parameter docs live in Zod .describe() and reach the LLM via JSON Schema.
@@ -702,32 +675,10 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
         if (denial) return permissionDeniedResponse(denial);
       }
 
-      const occurrence = coerceOptionalInt(
-        args.occurrence,
-        "occurrence",
-        0,
-        Number.MAX_SAFE_INTEGER,
-      );
-
-      const rawArgs: Record<string, unknown> = { filePath: file };
-      for (const key of ["appendContent", "symbol", "content", "oldString", "newString"] as const) {
+      const rawArgs: Record<string, unknown> = { path: file };
+      for (const key of ["appendContent", "symbol", "content", "edits"] as const) {
         if (argsRecord[key] !== undefined) rawArgs[key] = argsRecord[key];
       }
-      if (Array.isArray(argsRecord.edits)) {
-        rawArgs.edits = argsRecord.edits.map((item) => {
-          if (!item || typeof item !== "object" || Array.isArray(item)) return item;
-          const batchItem = item as Record<string, unknown>;
-          return batchItem.replaceAll === undefined
-            ? batchItem
-            : { ...batchItem, replaceAll: coerceBoolean(batchItem.replaceAll) };
-        });
-      } else if (argsRecord.edits !== undefined) {
-        rawArgs.edits = argsRecord.edits;
-      }
-      if (argsRecord.replaceAll !== undefined) {
-        rawArgs.replaceAll = coerceBoolean(argsRecord.replaceAll);
-      }
-      if (occurrence !== undefined) rawArgs.occurrence = occurrence;
 
       const preview = await callToolCall(ctx, context, "edit", rawArgs, { preview: true });
       if (preview.success === false) {
@@ -1146,80 +1097,7 @@ export function aftPrefixedTools(ctx: PluginContext): Record<string, ToolDefinit
   const tools: Record<string, ToolDefinition> = {
     aft_read: createReadTool(ctx),
     aft_write: createWriteTool(ctx, "aft_edit"),
-    aft_edit: {
-      ...aftEditTool,
-      // Returns the inner aft_edit tool's result OR a JSON envelope string for
-      // the legacy mode:"write" shim. Newer @opencode-ai/plugin versions
-      // widened ToolResult from `string` to `string | { output, metadata? }`,
-      // so we accept both shapes here; the OpenCode runtime handles both.
-      execute: async (args, context) => {
-        const argRecord = args as Record<string, unknown>;
-        // Legacy back-compat: callers (mostly older tests/integrations) used
-        // `{ mode, file, ... }` instead of the current schema. Translate
-        // `file` -> `filePath` so the rest of the wrapper sees the modern
-        // shape. The current edit tool ignores the `mode` field; we keep it
-        // in the args object only so the explicit `mode: "write"` branch
-        // below can detect it.
-        const normalizedArgs: Record<string, unknown> =
-          argRecord.mode !== undefined &&
-          argRecord.filePath === undefined &&
-          typeof argRecord.file === "string"
-            ? { ...argRecord, filePath: argRecord.file }
-            : { ...argRecord };
-
-        // Explicit legacy `mode: "write"` — route directly to the Rust
-        // `write` command. We do NOT fall through to the modern edit tool
-        // here, because the modern tool deliberately rejects content-only
-        // calls (the v0.17.2 footgun fix). Legacy `mode: "write"` is an
-        // *explicit* whole-file write request, which is fine; the danger is
-        // *implicit* whole-file writes where a typo in another mode-selecting
-        // param silently degrades into overwrite. Returns the same JSON
-        // envelope shape the legacy callers expect (success / file /
-        // syntax_valid / etc.), not the human-readable string the modern
-        // `write` tool returns.
-        if (
-          normalizedArgs.mode === "write" &&
-          typeof normalizedArgs.filePath === "string" &&
-          typeof normalizedArgs.content === "string"
-        ) {
-          const file = normalizedArgs.filePath as string;
-          const projectRoot = await resolveProjectRoot(ctx, context);
-          const filePath = resolvePathFromProjectRoot(projectRoot, file);
-          const relPath = path.relative(projectRoot, filePath);
-
-          // External-directory check first (mirrors opencode-native write.ts:43).
-          {
-            const denial = await assertExternalDirectoryPermission(ctx, context, filePath);
-            if (denial) return permissionDeniedResponse(denial);
-          }
-
-          const currentContent = await readCurrentFileForPreview(filePath);
-          const previewDiff = buildUnifiedDiff(
-            filePath,
-            currentContent,
-            normalizedArgs.content as string,
-          );
-          const denial = await askEditPermission(context, [relPath], {
-            filepath: filePath,
-            diff: previewDiff,
-          });
-          if (denial) return permissionDeniedResponse(denial);
-          const writeParams: Record<string, unknown> = {
-            file: filePath,
-            content: normalizedArgs.content as string,
-            create_dirs: normalizedArgs.create_dirs !== false,
-            diagnostics: normalizedArgs.diagnostics ?? diagnosticsOnEditDefault(ctx),
-          };
-          const response = await callBridge(ctx, context, "write", writeParams);
-          if (response.success === false) {
-            throw new Error((response.message as string | undefined) ?? "write failed");
-          }
-          return JSON.stringify(response);
-        }
-
-        return aftEditTool.execute(normalizedArgs, context);
-      },
-    },
+    aft_edit: aftEditTool,
     aft_apply_patch: createApplyPatchTool(ctx),
     aft_delete: createDeleteTool(ctx),
     aft_move: createMoveTool(ctx),
