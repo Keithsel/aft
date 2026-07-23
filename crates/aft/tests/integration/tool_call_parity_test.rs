@@ -80,8 +80,8 @@ fn tool_call_matches_direct_spine_envelopes() {
             let occurrences = direct_response["occurrences"]
                 .as_array()
                 .expect("ambiguous edit occurrences");
-            assert_eq!(occurrences[0]["index"], 1);
-            assert_eq!(occurrences[1]["index"], 2);
+            assert_eq!(occurrences[0]["occurrence"], 1);
+            assert_eq!(occurrences[1]["occurrence"], 2);
         }
 
         let expected_text = formatted_text_from_direct_response(

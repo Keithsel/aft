@@ -279,7 +279,11 @@ const BatchEditParams = Type.Object({
   replaceAll: Type.Optional(
     Type.Boolean({ description: "Replace every occurrence for this batch item" }),
   ),
-  occurrence: optionalInt(0, Number.MAX_SAFE_INTEGER, "0-based occurrence for this batch item"),
+  occurrence: optionalInt(
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "1-based occurrence for this batch item (1 = first match)",
+  ),
   startLine: optionalInt(
     1,
     Number.MAX_SAFE_INTEGER,
@@ -309,10 +313,12 @@ const EditParams = Type.Object({
   ),
   newString: Type.Optional(Type.String({ description: "Replacement text (omit to delete match)" })),
   replaceAll: Type.Optional(Type.Boolean({ description: "Replace every occurrence" })),
+  // min stays 0 so occurrence: 0 reaches the boundary normalizer's clear
+  // 1-based rejection instead of being dropped by the empty-param sentinel.
   occurrence: optionalInt(
     0,
     Number.MAX_SAFE_INTEGER,
-    "0-based occurrence to replace when multiple matches exist",
+    "1-based occurrence to replace when multiple matches exist (1 = first match)",
   ),
   appendContent: Type.Optional(
     Type.String({
@@ -615,9 +621,9 @@ export function registerHoistedTools(
         name: "edit",
         label: "edit",
         description:
-          "Edit part of a file via `appendContent`, batch `edits[]`, or `oldString`/`newString` find-and-replace. Batch `{ oldString, newString, replaceAll: true }` replaces every match. Mode priority: appendContent > edits > oldString.",
+          "Edit part of a file via `appendContent`, batch `edits[]`, or `oldString`/`newString` find-and-replace. Batch `{ oldString, newString, replaceAll: true }` replaces every match. Provide exactly one mode per call: appendContent, edits[], or oldString/newString (mixing modes is rejected).",
         promptSnippet:
-          "Partial file edits via appendContent, edits[], or oldString/newString (mode priority: appendContent > edits > oldString).",
+          "Partial file edits via appendContent, edits[], or oldString/newString (exactly one mode per call).",
         promptGuidelines: [
           "Prefer edit over write when changing part of an existing file.",
           "Use appendContent when adding text to the end of a file.",

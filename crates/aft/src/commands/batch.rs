@@ -260,15 +260,16 @@ fn resolve_edit(
             Some(Value::Number(number)) => {
                 let value = number.as_u64().or_else(|| {
                     number.as_f64().and_then(|value| {
-                        (value.is_finite()
-                            && value.fract() == 0.0
-                            && value >= 1.0
-                            && value <= usize::MAX as f64)
+                        (value.is_finite() && value.fract() == 0.0 && value >= 1.0)
                             .then_some(value as u64)
                     })
                 });
+                // Width-independent bound: compare in u64 before converting, so the
+                // full contract domain stays valid regardless of target usize width.
                 match value {
-                    Some(value) if value >= 1 => Some((value - 1) as usize),
+                    Some(value) if value >= 1 && value - 1 <= usize::MAX as u64 => {
+                        Some((value - 1) as usize)
+                    }
                     _ => {
                         return Err(Response::error(
                             req_id,
@@ -375,7 +376,7 @@ fn resolve_edit(
                     let line = source[..matched.byte_start].matches('\n').count();
                     let context = build_context(source, line, 2);
                     serde_json::json!({
-                        "index": occurrence_index + 1,
+                        "occurrence": occurrence_index + 1,
                         "line": line + 1,
                         "context": context,
                     })

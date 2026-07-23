@@ -4784,15 +4784,20 @@ mod tests {
         install_test_crypto_provider();
         let url = env::var("AFT_PLATFORM_VERIFIER_TLS_URL").expect("test TLS URL");
         let tls_config = crate::platform_tls::client_config().expect("build platform TLS config");
+        // Generous budgets: on macOS the FIRST evaluation of an untrusted chain
+        // can take >10s when the keychain holds a pathological trust-settings
+        // entry (trustd walks user trust settings and storms signature checks).
+        // The verifier still rejects correctly; a short timeout would surface a
+        // transient "operation timed out" before the certificate error exists.
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(45))
             .use_preconfigured_tls(tls_config)
             .build()
             .expect("build test embedding client");
         let result = send_embedding_request(
             || client.post(&url).body("{}"),
             "openai compatible",
-            EmbeddingRequestPolicy::Query(QueryBudget { timeout_ms: 5_000 }),
+            EmbeddingRequestPolicy::Query(QueryBudget { timeout_ms: 45_000 }),
         );
 
         #[cfg(target_os = "linux")]

@@ -1071,7 +1071,16 @@ fn handle_single_file_edit_match(
                     "edit_match: 'occurrence' must be a positive integer (1-based)",
                 );
             }
-            Some(value) => Some((value - 1) as usize),
+            // Width-independent bound: compare in u64 before converting, so the
+            // full contract domain stays valid regardless of target usize width.
+            Some(value) if value - 1 <= usize::MAX as u64 => Some((value - 1) as usize),
+            Some(_) => {
+                return Response::error(
+                    &req.id,
+                    "invalid_request",
+                    "edit_match: 'occurrence' exceeds the supported range",
+                );
+            }
         },
     };
 
@@ -1149,7 +1158,7 @@ fn handle_single_file_edit_match(
                 let line = source[..byte_pos].matches('\n').count();
                 let context = build_context(&source, line, 2);
                 serde_json::json!({
-                    "index": idx + 1,
+                    "occurrence": idx + 1,
                     "line": line + 1,
                     "context": context,
                 })

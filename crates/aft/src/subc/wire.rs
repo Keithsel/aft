@@ -808,8 +808,8 @@ mod tests {
             "batch: edits[0] match 'same' is ambiguous (2 occurrences, expected 1). Use 'occurrence' (1-based) to select one, or 'replaceAll': true to replace every occurrence.",
             json!({
                 "occurrences": [
-                    { "index": 1, "line": 1, "context": "same same" },
-                    { "index": 2, "line": 1, "context": "same same" }
+                    { "occurrence": 1, "line": 1, "context": "same same" },
+                    { "occurrence": 2, "line": 1, "context": "same same" }
                 ]
             }),
         );
@@ -836,8 +836,8 @@ mod tests {
         assert_eq!(
             err_body["structuredContent"]["occurrences"],
             json!([
-                { "index": 1, "line": 1, "context": "same same" },
-                { "index": 2, "line": 1, "context": "same same" }
+                { "occurrence": 1, "line": 1, "context": "same same" },
+                { "occurrence": 2, "line": 1, "context": "same same" }
             ])
         );
         let err_message = err_body["structuredContent"]["message"]

@@ -760,7 +760,11 @@ fn edit_match_multiple_occurrences_returns_candidates() {
 
     // Each occurrence should have index, line, context
     for occ in occurrences {
-        assert!(occ["index"].is_number(), "should have index: {:?}", occ);
+        assert!(
+            occ["occurrence"].is_number(),
+            "should have 1-based occurrence: {:?}",
+            occ
+        );
         assert!(occ["line"].is_number(), "should have line: {:?}", occ);
         assert!(occ["context"].is_string(), "should have context: {:?}", occ);
     }
@@ -1556,8 +1560,8 @@ fn batch_ambiguity_error_mentions_occurrence_and_replace_all() {
     assert!(message.contains("edits[0]"));
     let occurrences = resp["occurrences"].as_array().expect("occurrences array");
     assert_eq!(occurrences.len(), 2);
-    assert_eq!(occurrences[0]["index"], 1);
-    assert_eq!(occurrences[1]["index"], 2);
+    assert_eq!(occurrences[0]["occurrence"], 1);
+    assert_eq!(occurrences[1]["occurrence"], 2);
     assert_eq!(occurrences[0]["line"], 1);
     assert_eq!(occurrences[1]["line"], 1);
     assert_eq!(occurrences[0]["context"], "same same");

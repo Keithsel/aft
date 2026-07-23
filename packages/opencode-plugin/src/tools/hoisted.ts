@@ -545,7 +545,7 @@ function getEditDescription(ctx: PluginContext, writeToolName: string): string {
 
 **Modes** (determined by which parameters you provide):
 
-Mode priority: appendContent > edits > symbol (without oldString) > oldString (find/replace). If none match, the call is rejected — there is no implicit "write" fallback. To edit multiple files, make parallel \`edit\` calls in one response.
+Provide exactly one mode per call: appendContent, edits[], symbol replace, or oldString/newString (find/replace). Mixing modes or providing none is rejected — there is no implicit "write" fallback. To edit multiple files, make parallel \`edit\` calls in one response.
 
 1. **Append** — pass \`filePath\` + \`appendContent\`
    Appends text to the end of a file, creating the file if it does not exist.
@@ -574,9 +574,9 @@ Mode priority: appendContent > edits > symbol (without oldString) > oldString (f
    Replaces every occurrence of \`oldString\` in the file.
    Example: \`{ "filePath": "src/app.ts", "oldString": "oldName", "newString": "newName", "replaceAll": true }\`
 
-6. **Select specific occurrence** — add \`occurrence: N\` (0-indexed)
-   When multiple matches exist, select the Nth one (0 = first, 1 = second, etc.).
-   Example: \`{ "filePath": "src/app.ts", "oldString": "TODO", "newString": "DONE", "occurrence": 0 }\`
+6. **Select specific occurrence** — add \`occurrence: N\` (1-based)
+   When multiple matches exist, select the Nth one (1 = first, 2 = second, etc.).
+   Example: \`{ "filePath": "src/app.ts", "oldString": "TODO", "newString": "DONE", "occurrence": 1 }\`
 
 Note: Modes 5 and 6 are options on mode 4 (find/replace) — they require \`oldString\`.
 
@@ -602,8 +602,10 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
         .optional()
         .describe("Text to replace with (omit or set to empty string to delete the matched text)"),
       replaceAll: z.boolean().optional().describe("Replace all occurrences"),
+      // min stays 0 so occurrence: 0 reaches the boundary normalizer's clear
+      // 1-based rejection instead of being dropped by the empty-param sentinel.
       occurrence: optionalInt(0, Number.MAX_SAFE_INTEGER).describe(
-        "0-indexed occurrence to replace when multiple matches exist",
+        "1-based occurrence to replace when multiple matches exist (1 = first match)",
       ),
       symbol: z.string().optional().describe("Named symbol to replace (function, class, type)"),
       content: z
@@ -629,7 +631,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
               .optional()
               .describe("Replace every occurrence for this batch item"),
             occurrence: optionalInt(0, Number.MAX_SAFE_INTEGER).describe(
-              "0-indexed occurrence for this batch item",
+              "1-based occurrence for this batch item (1 = first match)",
             ),
             startLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
               "1-based start line for a batch line-range edit",
