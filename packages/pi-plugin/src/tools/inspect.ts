@@ -124,8 +124,8 @@ function diagnosticsSummaryPart(summary: Record<string, unknown> | undefined): s
   // so already-found diagnostics aren't hidden behind a bare sentinel.
   if (status === "pending") {
     return hasCounts
-      ? `diagnostics ${counts} so far — still pending (servers: ${diagnosticsServerSummary(section)})`
-      : `diagnostics pending (servers: ${diagnosticsServerSummary(section)})`;
+      ? `diagnostics ${counts} so far — still pending (servers: ${diagnosticsServerSummary(section)}); wait for the LSP update and use the next normal aft_inspect, not repeated polling`
+      : `diagnostics pending (servers: ${diagnosticsServerSummary(section)}); wait for the LSP update and use the next normal aft_inspect, not repeated polling`;
   }
   if (status === "incomplete") {
     return hasCounts
@@ -319,7 +319,12 @@ export function buildInspectSections(payload: unknown, theme: Theme): string[] {
 
   const sections = [theme.fg("accent", parts.join(" · "))];
   if (stale > 0 || pending > 0) {
-    sections.push(theme.fg("warning", `scanner state: ${stale} stale · ${pending} pending`));
+    sections.push(
+      theme.fg(
+        "warning",
+        `scanner state: ${stale} stale · ${pending} pending. Treat stale_categories/pending_categories as stale or incomplete cache state. AFT schedules a Tier-2 refresh after its next idle or inspect-triggered background run; use one later normal aft_inspect after that refresh, not a polling loop`,
+      ),
+    );
   }
 
   const topPreview = tier2TopPreview(summary, theme);

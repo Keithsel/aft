@@ -1244,7 +1244,7 @@ function formatWaitSummary(waited: BashStatusWaited, details: BashStatusDetails)
     return `Waited ${waited.elapsed_ms}ms; timeout reached without match.`;
   }
   if (waited.reason === "unavailable") {
-    return `Waited ${waited.elapsed_ms}ms; the bridge stayed busy and status couldn't be read. The task may still be running — check with bash_status({ taskId }).`;
+    return `Waited ${waited.elapsed_ms}ms; the bridge was busy, so task state is unknown. Do not poll; let the task's completion notification wake the session, or use one bash_status snapshot on the next normal tool call.`;
   }
   const exit = typeof details.exit_code === "number" ? `, exit ${details.exit_code}` : "";
   return `Waited ${waited.elapsed_ms}ms; task exited (${details.status}${exit}).`;

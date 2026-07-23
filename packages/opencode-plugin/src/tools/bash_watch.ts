@@ -238,7 +238,7 @@ function formatWatchResultText(
     } else if (waited.reason === "timeout") {
       text += `\nWaited ${waited.elapsed_ms}ms; timeout reached without match.`;
     } else if (waited.reason === "unavailable") {
-      text += `\nWaited ${waited.elapsed_ms}ms; the bridge stayed busy and status couldn't be read. The task may still be running — check with bash_status({ taskId }).`;
+      text += `\nWaited ${waited.elapsed_ms}ms; the bridge was busy, so task state is unknown. Do not poll; let the task's completion notification wake the session, or use one bash_status snapshot on the next normal tool call.`;
     } else {
       const stat = String(data.status ?? "unknown");
       const e = typeof data.exit_code === "number" ? `, exit ${data.exit_code}` : "";

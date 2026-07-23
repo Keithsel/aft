@@ -224,7 +224,7 @@ export function createBashTool(
       .describe("Shell command to execute. Supports pipes, redirection, and normal shell syntax."),
     timeout: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
       initialBashCfg.background
-        ? "Hard kill cap in milliseconds (positive integer). When omitted, the task can run up to 30 minutes. Foreground bash returns inline if the command finishes within ~8s (configurable via bash.foreground_wait_window_ms); otherwise it's automatically promoted to background and a completion reminder is delivered when the task actually finishes."
+        ? "Hard kill cap in milliseconds (positive integer). In the default foreground mode when wait is false, a command that exceeds the configured wait window is promoted to background and gets a completion reminder when it exits; wait:true disables promotion and remains inline until completion or timeout."
         : "Hard kill cap in milliseconds (positive integer). When omitted, the foreground command can run up to 30 minutes and returns inline when it finishes.",
     ),
     workdir: z
