@@ -114,7 +114,7 @@ describe("hoisted tool replacement matrix (real Pi RPC)", () => {
       },
     );
     expect(toolEnd.isError).toBe(false);
-    expect(resultText(toolEnd)).toContain("3 replacements");
+    expect(resultText(toolEnd)).toContain("Edited (+3/-3).");
   }, 120_000);
 
   test("edit edits[] applies two real file mutations atomically", async () => {

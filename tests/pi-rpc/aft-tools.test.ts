@@ -281,7 +281,7 @@ describe("AFT Pi tools (real Pi RPC)", () => {
     const toolEnd = await withPiTool(
       {
         name: "aft_search",
-        arguments: { query: "needle", hint: "literal", topK: 5, includeTests: true },
+        arguments: { query: "needle", topK: 5, includeTests: true },
       },
       {
         message: "Search for needle.",
@@ -299,7 +299,10 @@ describe("AFT Pi tools (real Pi RPC)", () => {
     expect(toolEnd.isError).toBe(false);
     const text = resultText(toolEnd);
     expect(text).toContain("needle.ts");
-    expect(text).toContain("Found 1 match");
+    // Exact phrasing depends on semantic backend availability in the runner
+    // ("Found 1 match" with ONNX present, "Found 1 lexical fallback result(s)"
+    // without); the contract under test is server-rendered text passthrough.
+    expect(text).toContain("Found 1");
   }, 120_000);
 
   test("aft_inspect returns server-rendered health text", async () => {

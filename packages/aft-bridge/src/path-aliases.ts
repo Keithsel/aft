@@ -451,6 +451,12 @@ function normalizeEditItem(value: unknown, index: number): Record<string, unknow
 
   if (hasRangeField) {
     for (const key of ["startLine", "endLine"]) {
+      // Models routinely send stringified line numbers ("3"); coerce exact
+      // integer strings before validating, matching the other edit scalars.
+      const value = item[key];
+      if (typeof value === "string" && /^[0-9]+$/.test(value.trim())) {
+        item[key] = Number(value.trim());
+      }
       if (!hasOwn(item, key) || !isPositiveSafeInteger(item[key])) {
         throw new InvalidRequestError(`edit: edits[${index}].${key} must be a positive integer`);
       }
