@@ -65,7 +65,10 @@ const SearchParams = Type.Object(
       }),
     ),
   },
-  { additionalProperties: true },
+  // No explicit additionalProperties: JSON Schema tolerates unknown keys by
+  // default, which is what lets a legacy `hint` argument arrive and be
+  // ignored — and the registration-parity projection stays byte-identical
+  // with the OpenCode schema.
 );
 
 /** Exported for renderer unit tests. */
