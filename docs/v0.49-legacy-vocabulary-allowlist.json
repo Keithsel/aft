@@ -2789,8 +2789,8 @@
     },
     {
       "path": "packages/aft-cli/src/commands/lsp.ts",
-      "location": "line 82, column 3",
-      "line": 82,
+      "location": "line 83, column 3",
+      "line": 83,
       "column": 3,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -2798,8 +2798,8 @@
     },
     {
       "path": "packages/aft-cli/src/commands/lsp.ts",
-      "location": "line 85, column 45",
-      "line": 85,
+      "location": "line 86, column 45",
+      "line": 86,
       "column": 45,
       "token": "filePath",
       "class": "internal-compatibility",
