@@ -630,13 +630,16 @@ fn render_inspect_text(
 
     // Honesty note first, only when there's something incomplete to flag.
     let mut notes: Vec<String> = Vec::new();
+    let mut has_stale_or_pending = false;
     for cat in stale {
         notes.push(format!("{cat} stale"));
+        has_stale_or_pending = true;
     }
     for cat in pending {
         // Diagnostics pending is surfaced by the plugin's diagnostics line.
         if cat != "diagnostics" {
             notes.push(format!("{cat} pending"));
+            has_stale_or_pending = true;
         }
     }
     for entry in failed {
@@ -645,7 +648,14 @@ fn render_inspect_text(
         }
     }
     if !notes.is_empty() {
-        lines.push(format!("note: {}", notes.join(", ")));
+        let mut note = format!("note: {}", notes.join(", "));
+        // Bound the next observation: stale/pending is cache state, not a poll signal.
+        if has_stale_or_pending {
+            note.push_str(
+                ". Treat stale_categories/pending_categories as stale or incomplete cache state. AFT schedules a Tier-2 refresh after its next idle or inspect-triggered background run; use one later normal aft_inspect after that refresh, not a polling loop",
+            );
+        }
+        lines.push(note);
     }
 
     // Tier-2 findings, highest-signal first.

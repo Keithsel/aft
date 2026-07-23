@@ -7,4 +7,4 @@ Note: no net file change — the match was found and applied, but the file conte
 LSP errors detected, please fix:
   Line 2: bad
 
-Note: LSP server(s) did not respond in time: typescript. Diagnostics may be incomplete; call aft_inspect for a checkpoint diagnostics snapshot.
+Note: LSP server(s) did not respond in time: typescript. Diagnostics are incomplete for this call; wait for the LSP update and use the next normal aft_inspect, not repeated polling.

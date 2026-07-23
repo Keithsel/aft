@@ -55,7 +55,7 @@ const RANK0_FULL_SNIPPET_MAX_LINES: usize = 250;
 /// never appear on a partial preview (ranks 1-2, or the >cap fallback that ends
 /// in "+N more lines"), where re-reading IS needed.
 const RANK0_FULL_SYMBOL_NOTICE: &str =
-    "full symbol shown as-is on disk; no re-read or zoom needed before editing";
+    "full symbol shown as-is from disk; edit directly from this context — no need to re-read or zoom first";
 
 #[derive(Debug, Clone)]
 pub struct HybridResult {

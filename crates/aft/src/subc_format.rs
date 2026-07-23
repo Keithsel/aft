@@ -440,7 +440,39 @@ fn format_move(data: &Value, ctx: &FormatContext) -> String {
         })
         .unwrap_or_default();
 
+    // Producer may mark a copy+delete-failed path as incomplete while both
+    // paths still exist; never render that as a finished "Moved".
+    let source_delete_failed = response
+        .and_then(|r| r.get("source_delete_failed"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let incomplete = response
+        .and_then(|r| r.get("complete"))
+        .and_then(Value::as_bool)
+        == Some(false);
+    if source_delete_failed || incomplete {
+        let message = response
+            .and_then(|r| r.get("warning"))
+            .and_then(Value::as_str)
+            .and_then(extract_move_source_delete_message)
+            .unwrap_or("unknown error");
+        return format!(
+            "Partially moved {file} → {destination}; destination was written, but source deletion failed: {message}. Both paths exist. Verify the source and destination before retrying or accepting the duplicate."
+        );
+    }
+
     format!("Moved {file} → {destination}")
+}
+
+/// Pull the OS/error fragment out of the move producer's warning string.
+fn extract_move_source_delete_message(warning: &str) -> Option<&str> {
+    const PREFIX: &str =
+        "destination was written, but source file could not be deleted after copy: ";
+    let rest = warning.strip_prefix(PREFIX)?;
+    rest.split(". Both paths")
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 fn format_import(data: &Value, ctx: &FormatContext) -> String {
@@ -983,7 +1015,7 @@ fn append_lsp_server_notes(output: &mut String, data: &Value) {
     let pending = string_array(data.get("lsp_pending_servers"));
     if !pending.is_empty() {
         output.push_str(&format!(
-            "\n\nNote: LSP server(s) did not respond in time: {}. Diagnostics may be incomplete; call aft_inspect for a checkpoint diagnostics snapshot.",
+            "\n\nNote: LSP server(s) did not respond in time: {}. Diagnostics are incomplete for this call; wait for the LSP update and use the next normal aft_inspect, not repeated polling.",
             pending.join(", ")
         ));
     }
@@ -1948,12 +1980,12 @@ fn format_diagnostics_summary(summary: Option<&Value>) -> Option<String> {
         Some("pending") => {
             if has_counts {
                 Some(format!(
-                    "diagnostics: {counts} so far — still pending (servers: {})",
+                    "diagnostics: {counts} so far — still pending (servers: {}); wait for the LSP update and use the next normal aft_inspect, not repeated polling",
                     diagnostics_server_summary(section)
                 ))
             } else {
                 Some(format!(
-                    "diagnostics: pending (servers: {})",
+                    "diagnostics: pending (servers: {}); wait for the LSP update and use the next normal aft_inspect, not repeated polling",
                     diagnostics_server_summary(section)
                 ))
             }
@@ -2856,6 +2888,71 @@ fn format_optional_memory_bytes(value: Option<&Value>) -> String {
         format!("{sign}{:.1} KiB", magnitude / 1024.0)
     } else {
         format!("{sign}{} B", magnitude as u64)
+    }
+}
+
+#[cfg(test)]
+mod move_format_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn source_delete_failed_renders_partially_moved_not_moved() {
+        let ctx = FormatContext {
+            move_file_arg: Some("a.ts".into()),
+            move_dest_arg: Some("b.ts".into()),
+            ..Default::default()
+        };
+        let rendered = format_move(
+            &json!({
+                "file": "/repo/src/a.ts",
+                "destination": "/repo/src/b.ts",
+                "moved": true,
+                "complete": false,
+                "source_delete_failed": true,
+                "warning": "destination was written, but source file could not be deleted after copy: permission denied. Both paths now exist; retry deleting the source or accept the duplicate."
+            }),
+            &ctx,
+        );
+
+        assert!(
+            rendered.starts_with("Partially moved a.ts → b.ts"),
+            "expected partial move header:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("source deletion failed: permission denied"),
+            "expected extracted delete error:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("Both paths exist"),
+            "expected both-paths guidance:\n{rendered}"
+        );
+        assert!(
+            !rendered.starts_with("Moved "),
+            "must not look like a finished move:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("Moved a.ts → b.ts"),
+            "finished-move phrasing must be absent:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn successful_move_still_renders_moved() {
+        let ctx = FormatContext {
+            move_file_arg: Some("a.ts".into()),
+            move_dest_arg: Some("b.ts".into()),
+            ..Default::default()
+        };
+        let rendered = format_move(
+            &json!({
+                "file": "/repo/src/a.ts",
+                "destination": "/repo/src/b.ts",
+                "moved": true
+            }),
+            &ctx,
+        );
+        assert_eq!(rendered, "Moved a.ts → b.ts");
     }
 }
 

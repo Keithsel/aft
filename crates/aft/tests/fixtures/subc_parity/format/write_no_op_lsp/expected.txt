@@ -4,6 +4,6 @@ LSP errors detected, please fix:
   Line 3: Type mismatch
 
 
-Note: LSP server(s) did not respond in time: typescript. Diagnostics may be incomplete; call aft_inspect for a checkpoint diagnostics snapshot.
+Note: LSP server(s) did not respond in time: typescript. Diagnostics are incomplete for this call; wait for the LSP update and use the next normal aft_inspect, not repeated polling.
 
 Note: LSP server(s) exited during this edit: eslint. Their diagnostics could not be collected.
