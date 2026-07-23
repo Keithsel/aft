@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "artifact_id": "ART-V049-S6-RELEASE-MANIFEST-001",
+  "artifact_version": "0.49.0",
+  "manifest_id": "MAN-V049-S6-RELEASE-001",
+  "source_commit": "3932eef9bbf782692a4689a9af292d5b37d164c0",
+  "source_surface_manifest": "docs/v0.49-agent-surface-manifest.json",
+  "distribution_manifest": "MAN-V049-DISTRIBUTION-ARTIFACTS-001",
+  "hash_rule": "Hash exact UTF-8 bytes and binary bytes; do not normalize newlines, reserialize JSON, or use test-only normalization.",
+  "candidate": {
+    "version": "0.49.0",
+    "previous_version": "0.48.1",
+    "version_source": "scripts/version-sync.mjs",
+    "source_tree_rule": "The governed source bytes must be present at source_commit before candidate version synchronization."
+  },
+  "independently_versioned_artifacts": [
+    {
+      "id": "DIST-V049-001",
+      "kind": "npm-package",
+      "name": "@cortexkit/aft-opencode",
+      "source": "packages/opencode-plugin",
+      "version": "0.49.0",
+      "build": { "command": "bun run build", "cwd": "packages/opencode-plugin" },
+      "activation": "OpenCode plugin package entry"
+    },
+    {
+      "id": "DIST-V049-002",
+      "kind": "npm-package",
+      "name": "@cortexkit/aft-pi",
+      "source": "packages/pi-plugin",
+      "version": "0.49.0",
+      "build": { "command": "bun run build", "cwd": "packages/pi-plugin" },
+      "activation": "Pi extension installer"
+    },
+    {
+      "id": "DIST-V049-003",
+      "kind": "npm-package",
+      "name": "@cortexkit/aft-bridge",
+      "source": "packages/aft-bridge",
+      "version": "0.49.0",
+      "build": { "command": "bun run build", "cwd": "packages/aft-bridge" },
+      "activation": "Installed as a plugin runtime dependency"
+    },
+    {
+      "id": "DIST-V049-004",
+      "kind": "npm-package",
+      "name": "@cortexkit/aft",
+      "source": "packages/aft-cli",
+      "version": "0.49.0",
+      "build": { "command": "bun run build", "cwd": "packages/aft-cli" },
+      "activation": "aft setup and doctor installer"
+    },
+    {
+      "id": "DIST-V049-005",
+      "kind": "rust-package-and-binary",
+      "name": "agent-file-tools",
+      "source": "crates/aft",
+      "version": "0.49.0",
+      "build": { "command": "cargo build --release -p agent-file-tools", "cwd": "." },
+      "activation": "Versioned binary resolver and bridge replacement"
+    },
+    {
+      "id": "DIST-V049-006",
+      "kind": "generated-schema",
+      "name": "subc_tool_schemas.json",
+      "source": "crates/aft/src/subc_tool_schemas.json",
+      "version": "0.49.0 schema artifact",
+      "build": { "command": "bun packages/opencode-plugin/scripts/build-tool-schemas.ts", "cwd": "." },
+      "activation": "Embedded by the Rust subc manifest"
+    },
+    {
+      "id": "DIST-V049-007",
+      "kind": "release-test-manifest",
+      "name": "weak-model-battery-v0.49",
+      "source": "docs/v0.49-release-evidence.json",
+      "version": "0.49.0",
+      "verification_only": true,
+      "build": { "command": "node scripts/release-gate-v049.mjs --candidate --evidence docs/v0.49-release-evidence.json", "cwd": "." },
+      "activation": "Release evidence validation"
+    }
+  ],
+  "platform_binary_artifacts": [
+    { "id": "DIST-V049-PLAT-001", "name": "@cortexkit/aft-darwin-arm64", "directory": "darwin-arm64", "version": "0.49.0", "asset": "aft-darwin-arm64" },
+    { "id": "DIST-V049-PLAT-002", "name": "@cortexkit/aft-darwin-x64", "directory": "darwin-x64", "version": "0.49.0", "asset": "aft-darwin-x64" },
+    { "id": "DIST-V049-PLAT-003", "name": "@cortexkit/aft-linux-arm64", "directory": "linux-arm64", "version": "0.49.0", "asset": "aft-linux-arm64" },
+    { "id": "DIST-V049-PLAT-004", "name": "@cortexkit/aft-linux-x64", "directory": "linux-x64", "version": "0.49.0", "asset": "aft-linux-x64" },
+    { "id": "DIST-V049-PLAT-005", "name": "@cortexkit/aft-win32-arm64", "directory": "win32-arm64", "version": "0.49.0", "asset": "aft-win32-arm64.exe" },
+    { "id": "DIST-V049-PLAT-006", "name": "@cortexkit/aft-win32-x64", "directory": "win32-x64", "version": "0.49.0", "asset": "aft-win32-x64.exe" }
+  ],
+  "profiles": [
+    {
+      "id": "REG-V049-OC-MIN",
+      "harness": "opencode",
+      "previous_artifact": "@cortexkit/aft-opencode@0.48.1",
+      "candidate_artifact": "@cortexkit/aft-opencode@0.49.0",
+      "activation": { "mechanism": "OpenCode plugin package entry", "entry": "@cortexkit/aft-opencode@0.49.0" }
+    },
+    {
+      "id": "REG-V049-OC-REC",
+      "harness": "opencode",
+      "previous_artifact": "@cortexkit/aft-opencode@0.48.1",
+      "candidate_artifact": "@cortexkit/aft-opencode@0.49.0",
+      "activation": { "mechanism": "OpenCode plugin package entry", "entry": "@cortexkit/aft-opencode@0.49.0" }
+    },
+    {
+      "id": "REG-V049-OC-ALL",
+      "harness": "opencode",
+      "previous_artifact": "@cortexkit/aft-opencode@0.48.1",
+      "candidate_artifact": "@cortexkit/aft-opencode@0.49.0",
+      "activation": { "mechanism": "OpenCode plugin package entry", "entry": "@cortexkit/aft-opencode@0.49.0" }
+    },
+    {
+      "id": "REG-V049-PI-MIN",
+      "harness": "pi",
+      "previous_artifact": "@cortexkit/aft-pi@0.48.1",
+      "candidate_artifact": "@cortexkit/aft-pi@0.49.0",
+      "activation": { "mechanism": "Pi extension installer", "command": "pi install @cortexkit/aft-pi@0.49.0" }
+    },
+    {
+      "id": "REG-V049-PI-REC",
+      "harness": "pi",
+      "previous_artifact": "@cortexkit/aft-pi@0.48.1",
+      "candidate_artifact": "@cortexkit/aft-pi@0.49.0",
+      "activation": { "mechanism": "Pi extension installer", "command": "pi install @cortexkit/aft-pi@0.49.0" }
+    },
+    {
+      "id": "REG-V049-PI-ALL",
+      "harness": "pi",
+      "previous_artifact": "@cortexkit/aft-pi@0.48.1",
+      "candidate_artifact": "@cortexkit/aft-pi@0.49.0",
+      "activation": { "mechanism": "Pi extension installer", "command": "pi install @cortexkit/aft-pi@0.49.0" }
+    }
+  ],
+  "gates": [
+    { "id": "GATE-V049-ARTIFACT-BYTES", "command": "node scripts/release-gate-v049.mjs --candidate", "required_before": "candidate acceptance" },
+    { "id": "GATE-V049-SUBC-DRIFT", "command": "bun packages/opencode-plugin/scripts/build-tool-schemas.ts --check", "required_before": "candidate acceptance" },
+    { "id": "GATE-V049-STEERING", "command": "bun scripts/audit-v049-agent-surface.ts", "required_before": "candidate acceptance" },
+    { "id": "GATE-V049-ACTIVATION", "command": "node scripts/release-gate-v049.mjs --candidate --stage --evidence-output <release-evidence.json>", "required_before": "candidate acceptance" },
+    { "id": "GATE-V049-PLATFORMS",  "command": "node scripts/release-gate-v049.mjs --candidate --evidence docs/v0.49-release-evidence.json --require-platform-artifacts", "required_before": "npm publication" }
+  ],
+  "atomicity": {
+    "scope": "Each distribution artifact and each registration profile is atomic within its own staging operation.",
+    "not_claimed": "No global transaction is claimed across hosts, registries, documentation hosting, or end-user installations."
+  },
+  "cache_observability": {
+    "policy": "Claim exactly one invalidation only when a production cache key is observable and changes exactly once.",
+    "when_unobservable": "Record the atomic agent-surface transition only; do not fabricate an invalidation count.",
+    "production_key_required_for_count": true
+  }
+}

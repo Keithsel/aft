@@ -407,6 +407,12 @@ jobs:
         run: bun run build
         working-directory: packages/aft-cli
 
+      - name: Fetch final v0.48.1 activation baseline
+        run: git fetch --force origin refs/tags/v0.48.1:refs/tags/v0.48.1
+
+      - name: Verify v0.49 artifact and release gates
+        run: node scripts/release-gate-v049.mjs --candidate --evidence docs/v0.49-release-evidence.json --require-platform-artifacts
+
       # Uses npm Trusted Publishing (OIDC) — configured per-package on npmjs.com
       - name: Publish platform packages
         run: |
