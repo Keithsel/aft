@@ -11,6 +11,7 @@ import {
   runDoctorFilters,
 } from "../commands/doctor-filters.js";
 import type { AftResponse } from "../lib/aft-bridge.js";
+import { CLI } from "../lib/cli.js";
 
 const originalLog = console.log;
 
@@ -93,7 +94,7 @@ describe("doctor filters rendering", () => {
     expect(output).toContain("  (empty)");
     expect(output).toContain("Project (./.aft/filters, 1):");
     expect(output).toContain("custom-build");
-    expect(output).toContain("untrusted — run `aft doctor filters trust` to enable");
+    expect(output).toContain(`untrusted — run \`${CLI} doctor filters trust\` to enable`);
   });
 
   test("renders --show with source and trust state", () => {
@@ -112,7 +113,7 @@ describe("doctor filters rendering", () => {
   test("prints help", () => {
     const lines = captureConsole();
     printDoctorFiltersHelp();
-    expect(lines.join("\n")).toContain("aft doctor filters --show <name>");
+    expect(lines.join("\n")).toContain(`${CLI} doctor filters --show <name>`);
     expect(lines.join("\n")).toContain("trust --list");
   });
 });

@@ -431,7 +431,7 @@ async function ensureServerInstalled(
             error(
               `[lsp] ${spec.npm}@${version}: TOFU sha256 mismatch — refusing to use ` +
                 `tampered binary. Recorded ${installedMeta.sha256}, current ${currentHash}. ` +
-                `Run \`aft doctor --clear\` to re-install from scratch.`,
+                `Run \`npx @cortexkit/aft doctor --clear\` to re-install from scratch.`,
             );
             return {
               started: false,

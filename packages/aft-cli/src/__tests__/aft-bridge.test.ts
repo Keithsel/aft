@@ -23,6 +23,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sendAftRequest, sendAftRequests } from "../lib/aft-bridge.js";
+import { CLI } from "../lib/cli.js";
 
 let workDir: string;
 
@@ -179,7 +180,7 @@ describe("sendAftRequests — actionable errors when the binary fails", () => {
     expect(caught?.message).toContain("Usage: aft <command>");
     expect(caught?.message).toContain("non-JSON line");
     // The hint must point users at `doctor` for full diagnostics.
-    expect(caught?.message).toContain("@cortexkit/aft doctor");
+    expect(caught?.message).toContain(`${CLI} doctor`);
   });
 
   test("error includes stderr so panic output is visible", async () => {

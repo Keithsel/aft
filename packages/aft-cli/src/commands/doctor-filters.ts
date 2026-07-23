@@ -6,6 +6,7 @@ import type { HarnessAdapter } from "../adapters/types.js";
 import type { AftRequest } from "../lib/aft-bridge.js";
 import { sendAftRequests } from "../lib/aft-bridge.js";
 import { findAftBinary } from "../lib/binary-probe.js";
+import { CLI } from "../lib/cli.js";
 import { resolveAdaptersForCommand } from "../lib/harness-select.js";
 import { log, selectMany } from "../lib/prompts.js";
 import { getSelfVersion } from "../lib/self-version.js";
@@ -55,16 +56,16 @@ type Mode =
   | { kind: "help" };
 
 export function printDoctorFiltersHelp(): void {
-  console.log("Usage: aft doctor filters [--show <name>] [trust|untrust]");
+  console.log(`Usage: ${CLI} doctor filters [--show <name>] [trust|untrust]`);
   console.log("");
   console.log("Inspect declarative TOML compression filters.");
   console.log("");
   console.log("Commands:");
-  console.log("  aft doctor filters                 List built-in, user, and project filters");
-  console.log("  aft doctor filters --show <name>   Show resolved TOML for a filter");
-  console.log("  aft doctor filters trust           Trust current project's .aft/filters");
-  console.log("  aft doctor filters trust --list    List trusted filter project paths");
-  console.log("  aft doctor filters untrust         Remove trusted project paths");
+  console.log(`  ${CLI} doctor filters                 List built-in, user, and project filters`);
+  console.log(`  ${CLI} doctor filters --show <name>   Show resolved TOML for a filter`);
+  console.log(`  ${CLI} doctor filters trust           Trust current project's .aft/filters`);
+  console.log(`  ${CLI} doctor filters trust --list    List trusted filter project paths`);
+  console.log(`  ${CLI} doctor filters untrust         Remove trusted project paths`);
 }
 
 export async function runDoctorFilters(options: DoctorFiltersOptions): Promise<number> {
@@ -295,7 +296,7 @@ function pushSection(
       filter.source.startsWith("project") && filter.trusted === false
         ? filter.error
           ? " (untrusted)"
-          : " (untrusted — run `aft doctor filters trust` to enable)"
+          : ` (untrusted — run \`${CLI} doctor filters trust\` to enable)`
         : "";
     lines.push(`  ${filter.name.padEnd(20)} ${description}${trust}`.trimEnd());
   }

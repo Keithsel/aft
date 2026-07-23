@@ -11,6 +11,7 @@ import { resolveCortexKitProjectConfigPath } from "@cortexkit/aft-bridge";
 import type { HarnessAdapter } from "../adapters/types.js";
 import { type BinaryCacheInfo, getBinaryCacheInfo } from "./binary-cache.js";
 import { probeBinaryVersion } from "./binary-probe.js";
+import { CLI } from "./cli.js";
 import { readJsoncFile } from "./jsonc.js";
 import type { LegacyPartitionDuplicationSummary } from "./legacy-storage.js";
 import { summarizeLegacyPartitionDuplication } from "./legacy-storage.js";
@@ -372,8 +373,7 @@ export function collectDiagnosticIssues(report: DiagnosticReport): DiagnosticIss
       severity: "high",
       scope: "AFT binary",
       message: `No aft binary matching CLI ${report.cliVersion} was detected.`,
-      remediation:
-        "Run `aft doctor --fix` to download the matching binary, or start an AFT-enabled session to trigger plugin-side install.",
+      remediation: `Run \`${CLI} doctor --fix\` to download the matching binary, or start an AFT-enabled session to trigger plugin-side install.`,
     });
   }
 
@@ -384,7 +384,7 @@ export function collectDiagnosticIssues(report: DiagnosticReport): DiagnosticIss
         severity: "high",
         scope: h.displayName,
         message: "Host CLI is not installed or is not on PATH.",
-        remediation: `Install ${h.displayName} and rerun \`aft doctor\`.`,
+        remediation: `Install ${h.displayName} and rerun \`${CLI} doctor\`.`,
       });
       continue;
     }
@@ -395,7 +395,7 @@ export function collectDiagnosticIssues(report: DiagnosticReport): DiagnosticIss
         severity: "medium",
         scope: h.displayName,
         message: "AFT plugin is not registered with this harness.",
-        remediation: "Run `aft setup` or `aft doctor --fix` to register the plugin.",
+        remediation: `Run \`${CLI} setup\` or \`${CLI} doctor --fix\` to register the plugin.`,
       });
     }
 
@@ -421,7 +421,7 @@ export function collectDiagnosticIssues(report: DiagnosticReport): DiagnosticIss
           message: h.onnxRuntime.ignoredSystemPath
             ? `ONNX Runtime at ${h.onnxRuntime.ignoredSystemPath} has a ${h.onnxRuntime.ignoredSystemReason}; no compatible runtime was detected.`
             : "ONNX Runtime is required for semantic search but was not detected.",
-          remediation: `Run \`aft doctor --fix\` or install ONNX Runtime manually (${h.onnxRuntime.installHint}).`,
+          remediation: `Run \`${CLI} doctor --fix\` or install ONNX Runtime manually (${h.onnxRuntime.installHint}).`,
         });
       }
       if (h.onnxRuntime.cachedCompatible === false) {
@@ -430,7 +430,7 @@ export function collectDiagnosticIssues(report: DiagnosticReport): DiagnosticIss
           severity: "medium",
           scope: h.displayName,
           message: `Cached ONNX Runtime ${h.onnxRuntime.cachedVersion ?? "unknown"} is incompatible (requires ${h.onnxRuntime.requirement}).`,
-          remediation: "Run `aft doctor --fix` to refresh AFT-managed ONNX Runtime state.",
+          remediation: `Run \`${CLI} doctor --fix\` to refresh AFT-managed ONNX Runtime state.`,
         });
       }
       if (h.onnxRuntime.systemCompatible === false) {

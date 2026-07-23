@@ -7,6 +7,7 @@ import type { HarnessAdapter } from "../adapters/types.js";
 import type { AftRequest, sendAftRequest } from "../lib/aft-bridge.js";
 import { sendAftRequests } from "../lib/aft-bridge.js";
 import { findAftBinary } from "../lib/binary-probe.js";
+import { CLI } from "../lib/cli.js";
 import { resolveAdaptersForCommand } from "../lib/harness-select.js";
 import { getAftLspBinariesDir, getAftLspPackagesDir } from "../lib/paths.js";
 import { log } from "../lib/prompts.js";
@@ -104,7 +105,7 @@ export function findProjectRootForFile(
 }
 
 export function printLspDoctorHelp(): void {
-  console.log("Usage: aft doctor lsp <file> [--harness opencode|pi]");
+  console.log(`Usage: ${CLI} doctor lsp <file> [--harness opencode|pi]`);
   console.log("");
   console.log("Inspect what AFT's LSP layer would do for a file.");
 }

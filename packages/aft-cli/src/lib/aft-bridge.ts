@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { CLI } from "./cli.js";
 
 export interface AftRequest {
   id: string;
@@ -190,7 +191,7 @@ function buildBridgeError(ctx: BridgeErrorContext): Error {
       );
     }
     parts.push(
-      "\nTry: npx @cortexkit/aft doctor (full diagnostics) or check ~/.cache/aft/bin/ for the right binary.",
+      `\nTry: ${CLI} doctor (full diagnostics) or check ~/.cache/aft/bin/ for the right binary.`,
     );
   }
 

@@ -13,6 +13,7 @@ import {
   typescriptPackageWarning,
 } from "../commands/lsp.js";
 import type { AftRequest, AftResponse } from "../lib/aft-bridge.js";
+import { CLI } from "../lib/cli.js";
 
 function makeAdapter(opts: { kind?: "opencode" | "pi" } = {}): HarnessAdapter {
   const kind = opts.kind ?? "opencode";
@@ -88,7 +89,7 @@ afterEach(() => {
 describe("doctor lsp", () => {
   test("renders help text when no file is passed", () => {
     const lines = captureConsole(() => printLspDoctorHelp());
-    expect(lines.join("\n")).toContain("Usage: aft doctor lsp <file>");
+    expect(lines.join("\n")).toContain(`Usage: ${CLI} doctor lsp <file>`);
   });
 
   test("passes --harness through adapter selection", async () => {

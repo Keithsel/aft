@@ -18,6 +18,7 @@ import type { HarnessAdapter } from "../adapters/types.js";
 import { getBinaryCacheInfo } from "../lib/binary-cache.js";
 import { probeAftBinary } from "../lib/binary-probe.js";
 import { buildRecentAftToolFailuresSectionFromLog } from "../lib/bridge-tool-failures.js";
+import { CLI } from "../lib/cli.js";
 import {
   collectDiagnostics,
   type DiagnosticReport,
@@ -102,7 +103,7 @@ export async function runDoctor(options: DoctorOptions): Promise<number> {
   if (options.issue) {
     return runIssueFlow(options.argv);
   }
-  intro("AFT doctor");
+  intro(`${CLI} doctor`);
 
   if (options.fix) {
     return runFixFlow(options.argv);
@@ -127,14 +128,14 @@ export async function runDoctor(options: DoctorOptions): Promise<number> {
     const hasRegisteredHarness = report.harnesses.some((h) => h.pluginRegistered);
     if (hasEnabledRegisteredHarness) {
       log.warn(
-        "  no matching aft binary detected — run `aft doctor --fix` to download, or it will install automatically when an AFT-enabled session makes its first tool call",
+        `  no matching aft binary detected — run \`${CLI} doctor --fix\` to download, or it will install automatically when an AFT-enabled session makes its first tool call`,
       );
     } else if (hasRegisteredHarness) {
       log.info(
         "  no matching aft binary detected; all registered AFT harnesses are disabled by config",
       );
     } else {
-      log.warn("  no matching aft binary detected — run `aft doctor --fix` to download");
+      log.warn(`  no matching aft binary detected — run \`${CLI} doctor --fix\` to download`);
     }
     logUnmatchedBinaryCandidates(report.cliVersion);
   }
@@ -166,7 +167,9 @@ export async function runDoctor(options: DoctorOptions): Promise<number> {
       );
     }
     if (!h.pluginRegistered) {
-      log.warn("  plugin registration can be fixed with `aft setup` or `aft doctor --fix`");
+      log.warn(
+        `  plugin registration can be fixed with \`${CLI} setup\` or \`${CLI} doctor --fix\``,
+      );
     }
 
     log.info(`  aft config: ${h.aftConfig.exists ? h.configPaths.aftConfig : "(not set)"}`);
@@ -176,7 +179,7 @@ export async function runDoctor(options: DoctorOptions): Promise<number> {
       const { value } = readJsoncFile(h.configPaths.aftConfig);
       const schemaSet = value?.$schema === AFT_SCHEMA_URL;
       log.info(
-        `  aft config $schema: ${schemaSet ? "set" : "not set — run `aft doctor --fix` for editor autocomplete"}`,
+        `  aft config $schema: ${schemaSet ? "set" : `not set — run \`${CLI} doctor --fix\` for editor autocomplete`}`,
       );
     }
 
@@ -203,7 +206,7 @@ export async function runDoctor(options: DoctorOptions): Promise<number> {
         parts.push(`not installed — ${h.onnxRuntime.installHint}`);
       }
       if (h.onnxRuntime.cachedCompatible === false || h.onnxRuntime.systemCompatible === false) {
-        parts.push("needs reinstall — run `aft doctor --fix`");
+        parts.push(`needs reinstall — run \`${CLI} doctor --fix\``);
       }
       log.info(`  onnx runtime: ${parts.join(" · ")}`);
     } else {
@@ -225,7 +228,7 @@ export async function runDoctor(options: DoctorOptions): Promise<number> {
   if (hadProblems) {
     logDoctorIssues(report);
     note(
-      "Run `aft setup` or `aft doctor --fix` to register AFT with any harness showing `plugin registered: no`. Run `aft doctor --fix` for ONNX Runtime issues or to download a missing aft binary.",
+      `Run \`${CLI} setup\` or \`${CLI} doctor --fix\` to register AFT with any harness showing \`plugin registered: no\`. Run \`${CLI} doctor --fix\` for ONNX Runtime issues or to download a missing aft binary.`,
       "Tips",
     );
     outro("Done — some issues found.");
@@ -766,8 +769,7 @@ async function runFixFlow(argv: string[]): Promise<number> {
   ) {
     log.info("No auto-fixable issues detected.");
     note(
-      "If you're still seeing 'Semantic Index: failed' in the TUI sidebar, run " +
-        "`aft doctor` (without --fix) for a full diagnostic dump.",
+      `If you're still seeing 'Semantic Index: failed' in the TUI sidebar, run \`${CLI} doctor\` (without --fix) for a full diagnostic dump.`,
       "Tip",
     );
     const afterReport = await collectDiagnostics(adapters);
@@ -844,7 +846,7 @@ async function confirmBinaryDownloadDespitePluginSkew(
   }
   if (decision === "skip") {
     log.info(
-      "Skipped binary download. Update the plugin to @latest, then rerun `aft doctor --fix`.",
+      `Skipped binary download. Update the plugin to @latest, then rerun \`${CLI} doctor --fix\`.`,
     );
     return false;
   }
@@ -1082,11 +1084,11 @@ function shortSessionId(id: string): string {
  * prompt for an issue description, optionally file via `gh`.
  */
 async function runIssueFlow(argv: string[]): Promise<number> {
-  intro("AFT doctor --issue");
+  intro(`${CLI} doctor --issue`);
 
   if (!isInteractiveTerminal()) {
     note(
-      "Non-interactive terminal — not collecting or filing automatically. Run `aft doctor --issue` from an interactive terminal so you can describe and review the report before filing.",
+      `Non-interactive terminal — not collecting or filing automatically. Run \`${CLI} doctor --issue\` from an interactive terminal so you can describe and review the report before filing.`,
       "Manual filing",
     );
     outro("Done.");

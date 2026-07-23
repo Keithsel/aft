@@ -988,7 +988,7 @@ async function downloadAndInstall(
         `[lsp] ${spec.id} ${tag}: TOFU sha256 mismatch — refusing install. ` +
           `Previously installed archive sha256=${previousArchiveSha256}, downloaded sha256=${archiveSha256}. ` +
           `This means the published release for tag ${tag} changed. Investigate before proceeding. ` +
-          `Run \`aft doctor --clear\` to wipe the cache and force a fresh install if you've verified the change.`,
+          `Run \`npx @cortexkit/aft doctor --clear\` to wipe the cache and force a fresh install if you've verified the change.`,
       );
       try {
         unlinkSync(archivePath);

@@ -7,6 +7,8 @@
  * `--harness <name>` overrides detection.
  */
 
+import { CLI } from "./lib/cli.js";
+
 const command = process.argv[2];
 const args = process.argv.slice(3);
 
@@ -30,11 +32,11 @@ function printHelp(): void {
   console.log("    (default: auto-detect, prompt if multiple detected)");
   console.log("");
   console.log("  Usage:");
-  console.log("    npx @cortexkit/aft setup");
-  console.log("    npx @cortexkit/aft doctor");
-  console.log("    npx @cortexkit/aft doctor lsp ./src/main.py");
-  console.log("    npx @cortexkit/aft doctor --clear");
-  console.log("    npx @cortexkit/aft doctor --issue");
+  console.log(`    ${CLI} setup`);
+  console.log(`    ${CLI} doctor`);
+  console.log(`    ${CLI} doctor lsp ./src/main.py`);
+  console.log(`    ${CLI} doctor --clear`);
+  console.log(`    ${CLI} doctor --issue`);
   console.log("");
 }
 

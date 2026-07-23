@@ -1,10 +1,11 @@
 import type { HarnessAdapter } from "../adapters/types.js";
+import { CLI } from "../lib/cli.js";
 import { resolveAdaptersForCommand } from "../lib/harness-select.js";
 import { ensureAftSchemaUrl } from "../lib/jsonc.js";
 import { intro, log, note, outro } from "../lib/prompts.js";
 
 export async function runSetup(argv: string[]): Promise<number> {
-  intro("AFT setup");
+  intro(`${CLI} setup`);
 
   const adapters = await resolveAdaptersForCommand(argv, {
     allowMulti: true,
@@ -16,7 +17,7 @@ export async function runSetup(argv: string[]): Promise<number> {
     log.info(`${adapter.displayName}: configuring ${adapter.pluginPackageName}…`);
     if (!adapter.isInstalled()) {
       log.warn(
-        `${adapter.displayName} host not found on PATH. ${adapter.getInstallHint()} and rerun \`aft setup\`.`,
+        `${adapter.displayName} host not found on PATH. ${adapter.getInstallHint()} and rerun \`${CLI} setup\`.`,
       );
       anyFailure = true;
       continue;
@@ -85,7 +86,7 @@ function printNextSteps(adapter: HarnessAdapter): void {
     note(
       [
         "Restart OpenCode (or reload your session) so the plugin loads.",
-        "Verify with: `npx @cortexkit/aft doctor`.",
+        `Verify with: \`${CLI} doctor\`.`,
       ].join("\n"),
       "Next steps",
     );
@@ -95,7 +96,7 @@ function printNextSteps(adapter: HarnessAdapter): void {
     note(
       [
         "Restart your Pi session so the extension registers.",
-        "Verify with: `npx @cortexkit/aft doctor`.",
+        `Verify with: \`${CLI} doctor\`.`,
       ].join("\n"),
       "Next steps",
     );
