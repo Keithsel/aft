@@ -32,6 +32,28 @@ impl WatchPattern {
             .build()
             .map(Self::Regex)
     }
+
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Substring(_) => "substring",
+            Self::Regex(_) => "regex",
+        }
+    }
+
+    pub fn pattern_text(&self) -> &str {
+        match self {
+            Self::Substring(text) => text,
+            Self::Regex(regex) => regex.as_str(),
+        }
+    }
+
+    pub fn from_persisted(kind: &str, pattern: &str) -> Result<Self, String> {
+        match kind {
+            "substring" => Ok(Self::Substring(pattern.to_string())),
+            "regex" => Self::regex(pattern).map_err(|error| error.to_string()),
+            other => Err(format!("unknown pattern kind {other}")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,9 +99,75 @@ impl WatchRegistry {
         Ok(watch_id)
     }
 
+    /// Re-arm a previously persisted watch after bridge/daemon restart.
+    ///
+    /// `scanning=false` means a once-watch already matched and is only kept so
+    /// a pending notification can be re-delivered until ack; it does not scan.
+    pub fn restore(
+        &mut self,
+        watch_id: String,
+        task_id: String,
+        pattern: WatchPattern,
+        once: bool,
+        scanning: bool,
+    ) -> Result<(), &'static str> {
+        self.note_restored_watch_id(&watch_id);
+        self.controlled_tasks.insert(task_id.clone());
+        if !scanning {
+            self.matched_tasks.insert(task_id);
+            return Ok(());
+        }
+        let watches = self.watches.entry(task_id.clone()).or_default();
+        if watches.iter().any(|watch| watch.watch_id == watch_id) {
+            return Ok(());
+        }
+        if watches.len() >= MAX_WATCHES_PER_TASK {
+            return Err("too_many_watches");
+        }
+        watches.push(WatchSpec {
+            watch_id,
+            task_id,
+            pattern,
+            once,
+        });
+        Ok(())
+    }
+
+    fn note_restored_watch_id(&mut self, watch_id: &str) {
+        let Some(hex) = watch_id.strip_prefix("watch-") else {
+            return;
+        };
+        if let Ok(value) = u64::from_str_radix(hex, 16) {
+            if value >= self.next_watch {
+                self.next_watch = value;
+            }
+        }
+    }
+
     pub fn unregister(&mut self, task_id: &str, watch_id: &str) {
         if let Some(watches) = self.watches.get_mut(task_id) {
             watches.retain(|watch| watch.watch_id != watch_id);
+            if watches.is_empty() {
+                self.watches.remove(task_id);
+            }
+        }
+    }
+
+    pub fn file_cursor(&self, cursor_key: &str) -> Option<u64> {
+        self.scan_cursors.get(cursor_key).copied()
+    }
+
+    pub fn watch_ids(&self, task_id: &str) -> Vec<String> {
+        self.watches
+            .get(task_id)
+            .map(|watches| watches.iter().map(|watch| watch.watch_id.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Drop in-memory watches whose ids are no longer durable (acked once-watches).
+    pub fn retain_watch_ids(&mut self, task_id: &str, keep: &HashSet<String>) {
+        if let Some(watches) = self.watches.get_mut(task_id) {
+            watches.retain(|watch| keep.contains(&watch.watch_id));
             if watches.is_empty() {
                 self.watches.remove(task_id);
             }
