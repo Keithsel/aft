@@ -72,11 +72,34 @@ export function prepareOpenCodeArguments(
   return prepareCanonicalPathArguments(toolName, rawArguments);
 }
 
+const DISPLAY_FILE_PATH_TOOLS = new Set(["read", "write", "edit"]);
+
+/**
+ * OpenCode's metadata callback closes over the host argument object, while the
+ * plugin's compatibility normalizer intentionally returns a fresh object.
+ * Mirror the canonical path onto that host object after normalization so a
+ * later metadata update persists the alias that OpenCode's file UIs expect.
+ */
+function preserveDisplayFilePathAlias(
+  toolName: string,
+  rawArguments: unknown,
+  prepared: Record<string, unknown>,
+): void {
+  if (!DISPLAY_FILE_PATH_TOOLS.has(toolName)) return;
+  if (!rawArguments || typeof rawArguments !== "object" || Array.isArray(rawArguments)) return;
+
+  const raw = rawArguments as Record<string, unknown>;
+  if (typeof prepared.path === "string" && !Object.hasOwn(raw, "filePath")) {
+    raw.filePath = prepared.path;
+  }
+}
+
 function prepareToolMap(tools: Record<string, ToolDefinition>): Record<string, ToolDefinition> {
   for (const [toolName, def] of Object.entries(tools)) {
     const execute = def.execute;
     def.execute = (async (args, context) => {
       const prepared = prepareOpenCodeArguments(toolName, args);
+      preserveDisplayFilePathAlias(toolName, args, prepared);
       return execute(prepared, context);
     }) as ToolDefinition["execute"];
   }

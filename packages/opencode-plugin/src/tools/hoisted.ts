@@ -11,7 +11,7 @@
 
 import * as path from "node:path";
 import { coerceBoolean, coerceStringArray, toolErrorFromResponse } from "@cortexkit/aft-bridge";
-import type { ToolDefinition, ToolResult } from "@opencode-ai/plugin";
+import type { ToolContext, ToolDefinition, ToolResult } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { resolveBashConfig } from "../config.js";
 import { prepareToolMap } from "../normalize-schemas.js";
@@ -50,6 +50,17 @@ type ReadAttachment = {
 
 function readAttachments(data: Record<string, unknown>): ReadAttachment[] {
   return Array.isArray(data.attachments) ? (data.attachments as ReadAttachment[]) : [];
+}
+
+/**
+ * Keep OpenCode's persisted tool input compatible with its file-tool display.
+ * The bridge payload remains separately constructed from the canonical path.
+ */
+function persistFilePathAlias(args: Record<string, unknown>, context: ToolContext): void {
+  if (typeof args.path === "string" && !Object.hasOwn(args, "filePath")) {
+    args.filePath = args.path;
+  }
+  context.metadata({ metadata: {} });
 }
 
 /** Test-only export. Production code uses buildUnifiedDiff directly. */
@@ -323,6 +334,7 @@ export function createReadTool(ctx: PluginContext): ToolDefinition {
 
         // Resolve relative paths from the same session/project root used by the bridge.
         const filePath = resolvePathFromProjectRoot(projectRoot, file);
+        persistFilePathAlias(args as Record<string, unknown>, context);
 
         // Apply OpenCode's external-directory rule first. Under AFT's project
         // restriction, reads continue to Rust so its session task registry can
@@ -442,11 +454,13 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
       content: z.string().describe("The full content to write to the file"),
     },
     execute: async (args, context): Promise<ToolResult> => {
+      const argsRecord = args as Record<string, unknown>;
       const file = args.path as string;
       const content = args.content as string;
       const projectRoot = await resolveProjectRoot(ctx, context);
 
       const filePath = resolvePathFromProjectRoot(projectRoot, file);
+      persistFilePathAlias(argsRecord, context);
 
       const relPath = path.relative(projectRoot, filePath);
 
@@ -646,6 +660,7 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
       const projectRoot = await resolveProjectRoot(ctx, context);
 
       const filePath = resolvePathFromProjectRoot(projectRoot, file);
+      persistFilePathAlias(argsRecord, context);
 
       const relPath = path.relative(projectRoot, filePath);
 

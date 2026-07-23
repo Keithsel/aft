@@ -68,6 +68,17 @@ function createMockSdkContext(directory: string): ToolContext {
   };
 }
 
+type MetadataInput = Parameters<ToolContext["metadata"]>[0];
+
+function createRecordingSdkContext(directory: string, metadataCalls: MetadataInput[]): ToolContext {
+  return {
+    ...createMockSdkContext(directory),
+    metadata: (input) => {
+      metadataCalls.push(input);
+    },
+  };
+}
+
 function recordingAsk(calls: Array<Record<string, unknown>>): ToolContext["ask"] {
   return (async (input: Record<string, unknown>) => {
     calls.push(input);
@@ -146,6 +157,112 @@ afterEach(async () => {
 });
 
 describe("Hoisted tool execute handlers", () => {
+  test("read mirrors path-only input and updates OpenCode metadata", async () => {
+    tmpDir = await makeTempDir();
+    const metadataCalls: MetadataInput[] = [];
+    const args: Record<string, unknown> = { path: "read.txt" };
+    const { tools } = createMockHoistedHarness(async (command) => {
+      expect(command).toBe("read");
+      return { success: true, text: "1: content\\n" };
+    });
+
+    await tools.read.execute(args, createRecordingSdkContext(tmpDir, metadataCalls));
+
+    expect(args).toHaveProperty("filePath", "read.txt");
+    expect(metadataCalls).toEqual([{ metadata: {} }]);
+  });
+
+  test("read preserves an existing filePath and skips invalid path aliasing", async () => {
+    tmpDir = await makeTempDir();
+    const metadataCalls: MetadataInput[] = [];
+    const existing = { path: "read.txt", filePath: "read.txt" };
+    const { tools } = createMockHoistedHarness(async () => ({ success: true, text: "ok" }));
+
+    await tools.read.execute(existing, createRecordingSdkContext(tmpDir, metadataCalls));
+    expect(existing.filePath).toBe("read.txt");
+
+    const invalid: Record<string, unknown> = { path: "" };
+    await expect(
+      tools.read.execute(invalid, createRecordingSdkContext(tmpDir, metadataCalls)),
+    ).rejects.toThrow();
+    expect(invalid).not.toHaveProperty("filePath");
+    expect(metadataCalls).toHaveLength(1);
+  });
+
+  test("write mirrors path-only input and updates OpenCode metadata", async () => {
+    tmpDir = await makeTempDir();
+    const metadataCalls: MetadataInput[] = [];
+    const args: Record<string, unknown> = { path: "write.txt", content: "content\\n" };
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview === true
+        ? { success: true, preview: true, preview_diff: "" }
+        : { success: true, text: "Created new file." },
+    );
+
+    await tools.write.execute(args, createRecordingSdkContext(tmpDir, metadataCalls));
+
+    expect(args).toHaveProperty("filePath", "write.txt");
+    expect(metadataCalls).toEqual([{ metadata: {} }]);
+  });
+
+  test("write preserves an existing filePath and skips invalid path aliasing", async () => {
+    tmpDir = await makeTempDir();
+    const metadataCalls: MetadataInput[] = [];
+    const existing = { path: "write.txt", filePath: "write.txt", content: "content\\n" };
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview === true
+        ? { success: true, preview: true, preview_diff: "" }
+        : { success: true, text: "Created new file." },
+    );
+
+    await tools.write.execute(existing, createRecordingSdkContext(tmpDir, metadataCalls));
+    expect(existing.filePath).toBe("write.txt");
+
+    const invalid: Record<string, unknown> = { path: "", content: "content\\n" };
+    await expect(
+      tools.write.execute(invalid, createRecordingSdkContext(tmpDir, metadataCalls)),
+    ).rejects.toThrow();
+    expect(invalid).not.toHaveProperty("filePath");
+    expect(metadataCalls).toHaveLength(1);
+  });
+
+  test("edit mirrors path-only input and updates OpenCode metadata", async () => {
+    tmpDir = await makeTempDir();
+    const metadataCalls: MetadataInput[] = [];
+    const args: Record<string, unknown> = { path: "edit.txt", appendContent: "content\\n" };
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview === true
+        ? { success: true, preview: true, preview_diff: "" }
+        : { success: true, text: "Edited (+1/-0)." },
+    );
+
+    await tools.edit.execute(args, createRecordingSdkContext(tmpDir, metadataCalls));
+
+    expect(args).toHaveProperty("filePath", "edit.txt");
+    expect(metadataCalls).toEqual([{ metadata: {} }]);
+  });
+
+  test("edit preserves an existing filePath and skips invalid path aliasing", async () => {
+    tmpDir = await makeTempDir();
+    const metadataCalls: MetadataInput[] = [];
+    const existing = { path: "edit.txt", filePath: "edit.txt", appendContent: "content\\n" };
+    const { tools } = createMockHoistedHarness(async (_command, _params, options) =>
+      options?.preview === true
+        ? { success: true, preview: true, preview_diff: "" }
+        : { success: true, text: "Edited (+1/-0)." },
+    );
+
+    await tools.edit.execute(existing, createRecordingSdkContext(tmpDir, metadataCalls));
+    expect(existing.filePath).toBe("edit.txt");
+
+    const invalid: Record<string, unknown> = { path: "", appendContent: "content\\n" };
+    await expect(
+      tools.edit.execute(invalid, createRecordingSdkContext(tmpDir, metadataCalls)),
+    ).rejects.toThrow();
+    expect(invalid).not.toHaveProperty("filePath");
+    expect(metadataCalls).toHaveLength(1);
+  });
+
   test("read throws the Rust error response instead of accessing missing content", async () => {
     tmpDir = await makeTempDir();
     sdkCtx = createMockSdkContext(tmpDir);
