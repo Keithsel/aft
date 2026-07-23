@@ -242,8 +242,8 @@
     },
     {
       "path": "crates/aft/src/subc_format.rs",
-      "location": "line 656, column 29",
-      "line": 656,
+      "location": "line 688, column 29",
+      "line": 688,
       "column": 29,
       "token": "filePath",
       "class": "rust-compatibility",
@@ -251,8 +251,8 @@
     },
     {
       "path": "crates/aft/src/subc_format.rs",
-      "location": "line 2099, column 23",
-      "line": 2099,
+      "location": "line 2131, column 23",
+      "line": 2131,
       "column": 23,
       "token": "toFile",
       "class": "rust-compatibility",
@@ -260,8 +260,8 @@
     },
     {
       "path": "crates/aft/src/subc_format.rs",
-      "location": "line 2101, column 45",
-      "line": 2101,
+      "location": "line 2133, column 45",
+      "line": 2133,
       "column": 45,
       "token": "toFile",
       "class": "rust-compatibility",
@@ -5957,8 +5957,143 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 158, column 39",
-      "line": 158,
+      "location": "line 171, column 34",
+      "line": 171,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 175, column 36",
+      "line": 175,
+      "column": 36,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 178, column 42",
+      "line": 178,
+      "column": 42,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 182, column 21",
+      "line": 182,
+      "column": 21,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 188, column 41",
+      "line": 188,
+      "column": 41,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 204, column 34",
+      "line": 204,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 208, column 37",
+      "line": 208,
+      "column": 37,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 211, column 43",
+      "line": 211,
+      "column": 43,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 219, column 21",
+      "line": 219,
+      "column": 21,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 225, column 41",
+      "line": 225,
+      "column": 41,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 241, column 34",
+      "line": 241,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 245, column 36",
+      "line": 245,
+      "column": 36,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 248, column 42",
+      "line": 248,
+      "column": 42,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 256, column 21",
+      "line": 256,
+      "column": 21,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 262, column 41",
+      "line": 262,
+      "column": 41,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 275, column 39",
+      "line": 275,
       "column": 39,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -5966,63 +6101,9 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 176, column 47",
-      "line": 176,
-      "column": 47,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 183, column 17",
-      "line": 183,
-      "column": 17,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 213, column 48",
-      "line": 213,
-      "column": 48,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 248, column 48",
-      "line": 248,
-      "column": 48,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 270, column 29",
-      "line": 270,
-      "column": 29,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 283, column 35",
-      "line": 283,
-      "column": 35,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 293, column 9",
+      "location": "line 293, column 47",
       "line": 293,
-      "column": 9,
+      "column": 47,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
@@ -6038,161 +6119,35 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 312, column 33",
-      "line": 312,
-      "column": 33,
+      "location": "line 330, column 48",
+      "line": 330,
+      "column": 48,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 315, column 9",
-      "line": 315,
-      "column": 9,
+      "location": "line 365, column 48",
+      "line": 365,
+      "column": 48,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 340, column 35",
-      "line": 340,
-      "column": 35,
+      "location": "line 387, column 29",
+      "line": 387,
+      "column": 29,
       "token": "filePath",
       "class": "compatibility-fixture",
       "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 360, column 11",
-      "line": 360,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 400, column 11",
+      "location": "line 400, column 35",
       "line": 400,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 431, column 9",
-      "line": 431,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 435, column 9",
-      "line": 435,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 485, column 9",
-      "line": 485,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 489, column 9",
-      "line": 489,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 534, column 9",
-      "line": 534,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 624, column 33",
-      "line": 624,
-      "column": 33,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 647, column 9",
-      "line": 647,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 676, column 32",
-      "line": 676,
-      "column": 32,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 702, column 9",
-      "line": 702,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 725, column 9",
-      "line": 725,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 745, column 11",
-      "line": 745,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 842, column 11",
-      "line": 842,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 879, column 35",
-      "line": 879,
       "column": 35,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6200,35 +6155,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1020, column 32",
-      "line": 1020,
-      "column": 32,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1044, column 11",
-      "line": 1044,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1120, column 11",
-      "line": 1120,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1163, column 9",
-      "line": 1163,
+      "location": "line 410, column 9",
+      "line": 410,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6236,116 +6164,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1191, column 11",
-      "line": 1191,
-      "column": 11,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1204, column 9",
-      "line": 1204,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1239, column 34",
-      "line": 1239,
-      "column": 34,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1269, column 9",
-      "line": 1269,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1320, column 52",
-      "line": 1320,
-      "column": 52,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1326, column 9",
-      "line": 1326,
-      "column": 9,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1353, column 61",
-      "line": 1353,
-      "column": 61,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1354, column 61",
-      "line": 1354,
-      "column": 61,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1379, column 52",
-      "line": 1379,
-      "column": 52,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1406, column 34",
-      "line": 1406,
-      "column": 34,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1438, column 34",
-      "line": 1438,
-      "column": 34,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1464, column 34",
-      "line": 1464,
-      "column": 34,
-      "token": "filePath",
-      "class": "compatibility-fixture",
-      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
-    },
-    {
-      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1473, column 17",
-      "line": 1473,
+      "location": "line 417, column 17",
+      "line": 417,
       "column": 17,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6353,8 +6173,35 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1493, column 11",
-      "line": 1493,
+      "location": "line 429, column 33",
+      "line": 429,
+      "column": 33,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 432, column 9",
+      "line": 432,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 457, column 35",
+      "line": 457,
+      "column": 35,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 477, column 11",
+      "line": 477,
       "column": 11,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6362,8 +6209,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1499, column 11",
-      "line": 1499,
+      "location": "line 517, column 11",
+      "line": 517,
       "column": 11,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6371,8 +6218,296 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1507, column 29",
-      "line": 1507,
+      "location": "line 548, column 9",
+      "line": 548,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 552, column 9",
+      "line": 552,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 602, column 9",
+      "line": 602,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 606, column 9",
+      "line": 606,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 651, column 9",
+      "line": 651,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 741, column 33",
+      "line": 741,
+      "column": 33,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 764, column 9",
+      "line": 764,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 793, column 32",
+      "line": 793,
+      "column": 32,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 819, column 9",
+      "line": 819,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 842, column 9",
+      "line": 842,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 862, column 11",
+      "line": 862,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 959, column 11",
+      "line": 959,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 996, column 35",
+      "line": 996,
+      "column": 35,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1137, column 32",
+      "line": 1137,
+      "column": 32,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1161, column 11",
+      "line": 1161,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1237, column 11",
+      "line": 1237,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1280, column 9",
+      "line": 1280,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1308, column 11",
+      "line": 1308,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1321, column 9",
+      "line": 1321,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1356, column 34",
+      "line": 1356,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1386, column 9",
+      "line": 1386,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1437, column 52",
+      "line": 1437,
+      "column": 52,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1443, column 9",
+      "line": 1443,
+      "column": 9,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1470, column 61",
+      "line": 1470,
+      "column": 61,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1471, column 61",
+      "line": 1471,
+      "column": 61,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1496, column 52",
+      "line": 1496,
+      "column": 52,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1523, column 34",
+      "line": 1523,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1555, column 34",
+      "line": 1555,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1581, column 34",
+      "line": 1581,
+      "column": 34,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1590, column 17",
+      "line": 1590,
+      "column": 17,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1610, column 11",
+      "line": 1610,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1616, column 11",
+      "line": 1616,
+      "column": 11,
+      "token": "filePath",
+      "class": "compatibility-fixture",
+      "reason": "The fixture submits or asserts a retired input spelling at a compatibility boundary."
+    },
+    {
+      "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
+      "location": "line 1624, column 29",
+      "line": 1624,
       "column": 29,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6380,8 +6515,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1508, column 29",
-      "line": 1508,
+      "location": "line 1625, column 29",
+      "line": 1625,
       "column": 29,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6389,8 +6524,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1509, column 29",
-      "line": 1509,
+      "location": "line 1626, column 29",
+      "line": 1626,
       "column": 29,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6398,8 +6533,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1510, column 29",
-      "line": 1510,
+      "location": "line 1627, column 29",
+      "line": 1627,
       "column": 29,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -6407,8 +6542,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/__tests__/hoisted-tools.test.ts",
-      "location": "line 1528, column 9",
-      "line": 1528,
+      "location": "line 1645, column 9",
+      "line": 1645,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-fixture",
@@ -7396,6 +7531,24 @@
       "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
     },
     {
+      "path": "packages/opencode-plugin/src/normalize-schemas.ts",
+      "location": "line 92, column 65",
+      "line": 92,
+      "column": 65,
+      "token": "filePath",
+      "class": "internal-compatibility",
+      "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
+    },
+    {
+      "path": "packages/opencode-plugin/src/normalize-schemas.ts",
+      "location": "line 93, column 9",
+      "line": 93,
+      "column": 9,
+      "token": "filePath",
+      "class": "internal-compatibility",
+      "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
+    },
+    {
       "path": "packages/opencode-plugin/src/shared/rpc-client.ts",
       "location": "line 329, column 17",
       "line": 329,
@@ -7514,8 +7667,26 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 325, column 15",
-      "line": 325,
+      "location": "line 60, column 62",
+      "line": 60,
+      "column": 62,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 61, column 10",
+      "line": 61,
+      "column": 10,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 336, column 15",
+      "line": 336,
       "column": 15,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7523,8 +7694,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 331, column 80",
-      "line": 331,
+      "location": "line 343, column 80",
+      "line": 343,
       "column": 80,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7532,8 +7703,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 342, column 26",
-      "line": 342,
+      "location": "line 354, column 26",
+      "line": 354,
       "column": 26,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7541,8 +7712,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 373, column 52",
-      "line": 373,
+      "location": "line 385, column 52",
+      "line": 385,
       "column": 52,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7550,8 +7721,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 386, column 39",
-      "line": 386,
+      "location": "line 398, column 39",
+      "line": 398,
       "column": 39,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7559,8 +7730,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 410, column 27",
-      "line": 410,
+      "location": "line 422, column 27",
+      "line": 422,
       "column": 27,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7568,8 +7739,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 449, column 13",
-      "line": 449,
+      "location": "line 462, column 13",
+      "line": 462,
       "column": 13,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7577,8 +7748,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 451, column 50",
-      "line": 451,
+      "location": "line 465, column 50",
+      "line": 465,
       "column": 50,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7586,8 +7757,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 455, column 78",
-      "line": 455,
+      "location": "line 469, column 78",
+      "line": 469,
       "column": 78,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7595,8 +7766,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 459, column 50",
-      "line": 459,
+      "location": "line 473, column 50",
+      "line": 473,
       "column": 50,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7604,8 +7775,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 467, column 19",
-      "line": 467,
+      "location": "line 481, column 19",
+      "line": 481,
       "column": 19,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7613,8 +7784,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 503, column 37",
-      "line": 503,
+      "location": "line 517, column 37",
+      "line": 517,
       "column": 37,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7622,8 +7793,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 510, column 28",
-      "line": 510,
+      "location": "line 524, column 28",
+      "line": 524,
       "column": 28,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7631,8 +7802,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 519, column 25",
-      "line": 519,
+      "location": "line 533, column 25",
+      "line": 533,
       "column": 25,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7640,8 +7811,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 648, column 13",
-      "line": 648,
+      "location": "line 662, column 13",
+      "line": 662,
       "column": 13,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7649,8 +7820,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 650, column 50",
-      "line": 650,
+      "location": "line 665, column 50",
+      "line": 665,
       "column": 50,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7658,8 +7829,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 654, column 78",
-      "line": 654,
+      "location": "line 669, column 78",
+      "line": 669,
       "column": 78,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7667,8 +7838,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 669, column 19",
-      "line": 669,
+      "location": "line 684, column 19",
+      "line": 684,
       "column": 19,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7676,8 +7847,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 710, column 28",
-      "line": 710,
+      "location": "line 725, column 28",
+      "line": 725,
       "column": 28,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7685,8 +7856,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 716, column 23",
-      "line": 716,
+      "location": "line 731, column 23",
+      "line": 731,
       "column": 23,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7694,8 +7865,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 725, column 50",
-      "line": 725,
+      "location": "line 740, column 50",
+      "line": 740,
       "column": 50,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7703,8 +7874,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 819, column 18",
-      "line": 819,
+      "location": "line 834, column 18",
+      "line": 834,
       "column": 18,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7712,8 +7883,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 820, column 36",
-      "line": 820,
+      "location": "line 835, column 36",
+      "line": 835,
       "column": 36,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7721,8 +7892,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 821, column 32",
-      "line": 821,
+      "location": "line 836, column 32",
+      "line": 836,
       "column": 32,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7730,8 +7901,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 822, column 78",
-      "line": 822,
+      "location": "line 837, column 78",
+      "line": 837,
       "column": 78,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7739,8 +7910,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 915, column 20",
-      "line": 915,
+      "location": "line 930, column 20",
+      "line": 930,
       "column": 20,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7748,8 +7919,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 916, column 25",
-      "line": 916,
+      "location": "line 931, column 25",
+      "line": 931,
       "column": 25,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7757,8 +7928,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 917, column 21",
-      "line": 917,
+      "location": "line 932, column 21",
+      "line": 932,
       "column": 21,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7766,8 +7937,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 918, column 80",
-      "line": 918,
+      "location": "line 933, column 80",
+      "line": 933,
       "column": 80,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7775,8 +7946,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 988, column 13",
-      "line": 988,
+      "location": "line 1003, column 13",
+      "line": 1003,
       "column": 13,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7784,8 +7955,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 993, column 84",
-      "line": 993,
+      "location": "line 1008, column 84",
+      "line": 1008,
       "column": 84,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7793,8 +7964,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 997, column 26",
-      "line": 997,
+      "location": "line 1012, column 26",
+      "line": 1012,
       "column": 26,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7802,8 +7973,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1006, column 22",
-      "line": 1006,
+      "location": "line 1021, column 22",
+      "line": 1021,
       "column": 22,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7811,8 +7982,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1013, column 9",
-      "line": 1013,
+      "location": "line 1028, column 9",
+      "line": 1028,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -11807,8 +11978,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 357, column 63",
-      "line": 357,
+      "location": "line 360, column 63",
+      "line": 360,
       "column": 63,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11816,8 +11987,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 389, column 59",
-      "line": 389,
+      "location": "line 392, column 59",
+      "line": 392,
       "column": 59,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11825,8 +11996,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 402, column 56",
-      "line": 402,
+      "location": "line 405, column 56",
+      "line": 405,
       "column": 56,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11834,8 +12005,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 438, column 62",
-      "line": 438,
+      "location": "line 441, column 62",
+      "line": 441,
       "column": 62,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11843,8 +12014,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 557, column 13",
-      "line": 557,
+      "location": "line 560, column 13",
+      "line": 560,
       "column": 13,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11852,8 +12023,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 565, column 40",
-      "line": 565,
+      "location": "line 568, column 40",
+      "line": 568,
       "column": 40,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11861,8 +12032,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 571, column 13",
-      "line": 571,
+      "location": "line 574, column 13",
+      "line": 574,
       "column": 13,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11870,8 +12041,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 581, column 13",
-      "line": 581,
+      "location": "line 584, column 13",
+      "line": 584,
       "column": 13,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11879,8 +12050,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 588, column 38",
-      "line": 588,
+      "location": "line 591, column 38",
+      "line": 591,
       "column": 38,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11888,8 +12059,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 593, column 24",
-      "line": 593,
+      "location": "line 596, column 24",
+      "line": 596,
       "column": 24,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11897,8 +12068,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 684, column 41",
-      "line": 684,
+      "location": "line 687, column 41",
+      "line": 687,
       "column": 41,
       "token": "filePath",
       "class": "internal-compatibility",
@@ -11906,8 +12077,8 @@
     },
     {
       "path": "tests/pi-rpc/aft-tools.test.ts",
-      "location": "line 688, column 41",
-      "line": 688,
+      "location": "line 691, column 41",
+      "line": 691,
       "column": 41,
       "token": "filePath",
       "class": "internal-compatibility",
