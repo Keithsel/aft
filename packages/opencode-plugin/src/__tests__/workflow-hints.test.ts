@@ -25,7 +25,7 @@ describe("buildWorkflowHints", () => {
     expect(out).toContain("**Web/URL access**");
     expect(out).toContain("**Code exploration**");
     expect(out).toContain("`aft_search` is the primary code-search tool");
-    expect(out).toContain('`hint: "regex"`');
+    expect(out).not.toContain("hint");
     expect(out).toContain("auto-routes concepts, identifiers, regex");
     // Imperative anti-bash-grep steer with concrete reflex translations.
     expect(out).toContain("DO NOT run `grep`/`rg`/`find`/`sed`/`cat` through `bash`");

@@ -87,7 +87,7 @@ export function buildWorkflowHints(opts: WorkflowHintsOpts): string | null {
   if (hasOutline && hasZoom && (hasGrep || hasSearch)) {
     const searchName = hasSearch ? "aft_search" : grepName;
     const locate = hasSearch
-      ? '`aft_search` is the primary code-search tool: one call auto-routes concepts, identifiers, regex, error strings, and literals (pass `hint: "regex"`/`"literal"`/`"semantic"` to force a lane).'
+      ? "`aft_search` is the primary code-search tool: one call auto-routes concepts, identifiers, regex, error strings, and literals."
       : `\`${grepName}\` (the tool — indexed and ranked) locates code.`;
     const readName = opts.hoistBuiltins ? "read" : "aft_read";
     sections.push(

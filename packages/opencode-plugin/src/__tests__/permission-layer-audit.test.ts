@@ -307,9 +307,7 @@ describe("permission audit regressions", () => {
       always: ["*"],
       metadata: { pattern: "TODO" },
     });
-    expect(searchCalls).toEqual([
-      { command: "search", params: { query: "TODO", hint: "literal" } },
-    ]);
+    expect(searchCalls).toEqual([{ command: "search", params: { query: "TODO" } }]);
 
     const grepAskCalls: AskCall[] = [];
     const { calls: grepCalls, tools: grepSearch } = createHarness(searchTools, () => ({
@@ -343,8 +341,8 @@ describe("permission audit regressions", () => {
 
     expect(askCalls.filter((call) => call.permission === "aft_search_external")).toHaveLength(1);
     expect(calls).toEqual([
-      { command: "search", params: { query: "TODO", hint: "literal", path: external } },
-      { command: "search", params: { query: "TODO", hint: "literal", path: external } },
+      { command: "search", params: { query: "TODO", path: external } },
+      { command: "search", params: { query: "TODO", path: external } },
     ]);
 
     const deniedAskCalls: AskCall[] = [];
@@ -394,7 +392,12 @@ describe("permission audit regressions", () => {
     );
 
     expect(parsePermissionDenied(raw).message).toContain("restrict_to_project_root");
-    expect(askCalls).toEqual([]);
+    expect(askCalls).toEqual([
+      expect.objectContaining({
+        permission: "aft_search",
+        patterns: ["TODO"],
+      }),
+    ]);
     expect(calls).toEqual([]);
   });
 

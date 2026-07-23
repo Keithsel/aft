@@ -245,7 +245,7 @@ fn aft_search_excludes_tests_before_the_visible_result_cap() {
         json!({
             "id": "search-production-only",
             "command": "semantic_search",
-            "query": "needle_cap_bug",
+            "query": "needle_.*cap_bug",
             "hint": "literal",
             "top_k": 10,
             "include_tests": false,
@@ -274,7 +274,7 @@ fn aft_search_excludes_tests_before_the_visible_result_cap() {
         json!({
             "id": "search-including-tests",
             "command": "semantic_search",
-            "query": "needle_cap_bug",
+            "query": "needle_.*cap_bug",
             "hint": "literal",
             "top_k": 10,
             "include_tests": true,
@@ -314,7 +314,7 @@ fn aft_search_excludes_tests_before_the_visible_result_cap() {
         json!({
             "id": "normal-small-search",
             "command": "semantic_search",
-            "query": "normal_small_needle",
+            "query": "normal_.*needle",
             "hint": "literal",
             "top_k": 10,
             "include_tests": false,

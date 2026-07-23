@@ -25,8 +25,6 @@ export function semanticTools(ctx: PluginContext): Record<string, ToolDefinition
     // aft_callgraph) already describe themselves.
     description: [
       "Search code with one tool: concepts, identifiers, error strings, regex, literals, and filenames are auto-routed to the right engine and returned ranked. For conceptual 'how does X work' queries, phrase a full natural-language sentence — the semantic lane is NL-aware and matches intent against docstrings and comments ('how does the ORM build and execute a query', 'where is rate limiting handled'), not just keywords. Exact names, strings, and regex stay terse ('^export', 'Cargo.lock').",
-      "",
-      "Set hint to 'regex', 'literal', or 'semantic' to force a lane.",
     ].join("\n"),
     args: {
       query: arg(
@@ -37,12 +35,6 @@ export function semanticTools(ctx: PluginContext): Record<string, ToolDefinition
           ),
       ),
       topK: arg(optionalInt(1, 100).describe("Number of results (default: 10, max: 100)")),
-      hint: arg(
-        z
-          .enum(["regex", "literal", "semantic", "auto"])
-          .optional()
-          .describe("Optional routing hint. Defaults to 'auto'."),
-      ),
       includeTests: arg(
         z
           .boolean()
@@ -69,17 +61,13 @@ export function semanticTools(ctx: PluginContext): Record<string, ToolDefinition
         throw new Error("semantic_search: invalid params: `query` must be a non-empty string");
       }
       const query = args.query;
-      const hint = typeof args.hint === "string" ? args.hint : undefined;
       const pathArg =
         typeof args.path === "string" && args.path.trim() ? args.path.trim() : undefined;
 
-      // For non-semantic hints, call askSearchPermission before executing the
-      // search. This uses the aft_search permission id so rules targeting only
-      // the built-in grep tool do not block this tool.
-      if (hint !== "semantic") {
-        const denied = await askSearchPermission(context, query);
-        if (denied) return permissionDeniedResponse(denied);
-      }
+      // Auto routing may use either the indexed or grep-backed lane, so ask for
+      // the aft_search permission before executing every search.
+      const denied = await askSearchPermission(context, query);
+      if (denied) return permissionDeniedResponse(denied);
 
       if (pathArg) {
         const denied = await assertAftSearchExternalPermission(ctx, context, pathArg);
@@ -89,7 +77,6 @@ export function semanticTools(ctx: PluginContext): Record<string, ToolDefinition
       const rawArgs: Record<string, unknown> = { query };
       const topK = coerceOptionalInt(args.topK, "topK", 1, 100);
       if (topK !== undefined) rawArgs.topK = topK;
-      if (hint) rawArgs.hint = hint;
       if (typeof args.includeTests === "boolean") rawArgs.includeTests = args.includeTests;
       if (pathArg) rawArgs.path = pathArg;
       const response = await callToolCall(ctx, context, "search", rawArgs);

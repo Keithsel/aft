@@ -168,9 +168,9 @@ describe("semantic renderer", () => {
             },
           ],
         }),
-        { query: ".*login", topK: 5, hint: "regex" },
+        { query: ".*login", topK: 5 },
         mockTheme,
-        makeContext({ query: ".*login", topK: 5, hint: "regex" }),
+        makeContext({ query: ".*login", topK: 5 }),
       ),
     );
 

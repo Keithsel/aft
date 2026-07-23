@@ -19,7 +19,7 @@ function toolArgs(call: { params: Record<string, unknown> }): Record<string, unk
 }
 
 describe("aft_search adapter", () => {
-  test("maps topK and hint to bridge params and carries structured details", async () => {
+  test("maps topK while ignoring a legacy hint and carries structured details", async () => {
     const { api, tools } = makeMockApi();
     const bridgeResponse = {
       success: true,
@@ -47,7 +47,6 @@ describe("aft_search adapter", () => {
     expect(toolArgs(calls[0])).toEqual({
       query: "retry logic",
       topK: 7,
-      hint: "literal",
       includeTests: true,
     });
     expect(result.content[0].text).toBe("ready results");
@@ -97,6 +96,15 @@ describe("aft_search adapter", () => {
     expect(calls).toEqual([]);
   });
 
+  test("schema does not advertise the legacy hint property", () => {
+    const { api, tools } = makeMockApi();
+    const { bridge } = makeMockBridge();
+    registerSemanticTool(api, makePluginContext(bridge));
+    const schema = tools.get("aft_search")!.parameters as { properties?: Record<string, unknown> };
+
+    expect(schema.properties?.hint).toBeUndefined();
+  });
+
   test("topK schema accepts only bounded integers", () => {
     const { api, tools } = makeMockApi();
     const { bridge } = makeMockBridge();
@@ -106,6 +114,7 @@ describe("aft_search adapter", () => {
     expect(schemaAccepts(schema, { query: "auth", topK: 1 })).toBe(true);
     expect(schemaAccepts(schema, { query: "auth", topK: 100 })).toBe(true);
     expect(schemaAccepts(schema, { query: "auth" })).toBe(true);
+    expect(schemaAccepts(schema, { query: "auth", hint: "literal" })).toBe(true);
     expect(schemaAccepts(schema, { query: "auth", topK: 0 })).toBe(false);
     expect(schemaAccepts(schema, { query: "auth", topK: 101 })).toBe(false);
     expect(schemaAccepts(schema, { query: "auth", topK: 1.5 })).toBe(false);

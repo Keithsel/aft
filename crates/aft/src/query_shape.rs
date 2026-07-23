@@ -127,6 +127,28 @@ pub fn extract_tokens(query: &str, shape: &QueryShape) -> Vec<String> {
     }
 }
 
+/// Tokens for a lexical second chance after an exact or semantic lane misses.
+/// Natural-language and regex shapes normally have no `extract_tokens` output,
+/// but quoted code phrases still carry useful identifiers. Reuse the same quote
+/// parser used for semantic name priors so a query such as `"outside <touser>"
+/// reminder text` can rank files containing either quoted token.
+pub fn extract_lexical_tokens(query: &str, shape: &QueryShape) -> Vec<String> {
+    match shape.kind {
+        QueryKind::NaturalLanguage | QueryKind::Regex => {
+            let explicit = extract_explicit_code_tokens(query);
+            if !explicit.is_empty() {
+                return explicit;
+            }
+            if shape.kind == QueryKind::NaturalLanguage {
+                extract_short_nl_lexical_tokens(query)
+            } else {
+                extract_identifier_tokens(query, false)
+            }
+        }
+        _ => extract_tokens(query, shape),
+    }
+}
+
 /// Lexical tokens for a short natural-language concept routed to Hybrid (e.g.
 /// "parse imports"). `extract_tokens` returns nothing for NL (its words are not
 /// code identifiers), but a short two-word concept is frequently a literal code
