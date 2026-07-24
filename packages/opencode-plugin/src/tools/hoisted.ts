@@ -312,7 +312,14 @@ export function createReadTool(ctx: PluginContext): ToolDefinition {
     read: {
       description: READ_DESCRIPTION,
       args: {
-        path: z
+        // OpenCode-only exception to the canonical `path` vocabulary: the
+        // hoisted read/write/edit trio overrides OpenCode's built-in tools,
+        // and the host UI renders headers from the recorded model input's
+        // `filePath` verbatim (no fallback, and the record is taken from the
+        // raw model stream before any plugin hook). Advertising `path` here
+        // blanks every file header in the OpenCode UI; `path` is still
+        // accepted silently at runtime.
+        filePath: z
           .string()
           .describe("Path to file or directory (absolute or relative to project root)"),
         startLine: optionalInt(1, Number.MAX_SAFE_INTEGER).describe(
@@ -450,7 +457,8 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
   return {
     description: getWriteDescription(ctx, editToolName),
     args: {
-      path: z.string().describe("Path to the file to write (absolute or relative to project root)"),
+      // filePath, not path: host UI header contract — see createReadTool.
+      filePath: z.string().describe("Path to the file to write (absolute or relative to project root)"),
       content: z.string().describe("The full content to write to the file"),
     },
     execute: async (args, context): Promise<ToolResult> => {
@@ -597,7 +605,8 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
   return {
     description: getEditDescription(ctx, writeToolName),
     args: {
-      path: z.string().describe("Path to the file to edit (absolute or relative to project root)"),
+      // filePath, not path: host UI header contract — see createReadTool.
+      filePath: z.string().describe("Path to the file to edit (absolute or relative to project root)"),
       symbol: z.string().optional().describe("Named symbol to replace (function, class, type)"),
       content: z
         .string()

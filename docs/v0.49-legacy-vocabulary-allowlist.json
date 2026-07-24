@@ -268,6 +268,60 @@
       "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
     },
     {
+      "path": "crates/aft/src/subc_tool_schemas.json",
+      "location": "line 81, column 8",
+      "line": 81,
+      "column": 8,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "crates/aft/src/subc_tool_schemas.json",
+      "location": "line 111, column 8",
+      "line": 111,
+      "column": 8,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "crates/aft/src/subc_tool_schemas.json",
+      "location": "line 119, column 8",
+      "line": 119,
+      "column": 8,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "crates/aft/src/subc_tool_schemas.json",
+      "location": "line 129, column 8",
+      "line": 129,
+      "column": 8,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "crates/aft/src/subc_tool_schemas.json",
+      "location": "line 138, column 8",
+      "line": 138,
+      "column": 8,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "crates/aft/src/subc_tool_schemas.json",
+      "location": "line 200, column 8",
+      "line": 200,
+      "column": 8,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
       "path": "crates/aft/src/subc_translate.rs",
       "location": "line 98, column 48",
       "line": 98,
@@ -7685,8 +7739,26 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 336, column 15",
-      "line": 336,
+      "location": "line 318, column 13",
+      "line": 318,
+      "column": 13,
+      "token": "filePath",
+      "class": "host-display-contract",
+      "reason": "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 322, column 9",
+      "line": 322,
+      "column": 9,
+      "token": "filePath",
+      "class": "host-display-contract",
+      "reason": "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 343, column 15",
+      "line": 343,
       "column": 15,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7694,8 +7766,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 343, column 80",
-      "line": 343,
+      "location": "line 350, column 80",
+      "line": 350,
       "column": 80,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7703,8 +7775,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 354, column 26",
-      "line": 354,
+      "location": "line 361, column 26",
+      "line": 361,
       "column": 26,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7712,8 +7784,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 385, column 52",
-      "line": 385,
+      "location": "line 392, column 52",
+      "line": 392,
       "column": 52,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7721,8 +7793,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 398, column 39",
-      "line": 398,
+      "location": "line 405, column 39",
+      "line": 405,
       "column": 39,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7730,8 +7802,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 422, column 27",
-      "line": 422,
+      "location": "line 429, column 27",
+      "line": 429,
       "column": 27,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7739,27 +7811,27 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 462, column 13",
-      "line": 462,
+      "location": "line 460, column 10",
+      "line": 460,
+      "column": 10,
+      "token": "filePath",
+      "class": "host-display-contract",
+      "reason": "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 461, column 7",
+      "line": 461,
+      "column": 7,
+      "token": "filePath",
+      "class": "host-display-contract",
+      "reason": "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 470, column 13",
+      "line": 470,
       "column": 13,
-      "token": "filePath",
-      "class": "compatibility-boundary",
-      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
-    },
-    {
-      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 465, column 50",
-      "line": 465,
-      "column": 50,
-      "token": "filePath",
-      "class": "compatibility-boundary",
-      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
-    },
-    {
-      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 469, column 78",
-      "line": 469,
-      "column": 78,
       "token": "filePath",
       "class": "compatibility-boundary",
       "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
@@ -7775,8 +7847,26 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 481, column 19",
+      "location": "line 477, column 78",
+      "line": 477,
+      "column": 78,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 481, column 50",
       "line": 481,
+      "column": 50,
+      "token": "filePath",
+      "class": "compatibility-boundary",
+      "reason": "The spelling is retained only for raw-input compatibility or an internal bridge payload."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 489, column 19",
+      "line": 489,
       "column": 19,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7784,8 +7874,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 517, column 37",
-      "line": 517,
+      "location": "line 525, column 37",
+      "line": 525,
       "column": 37,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7793,8 +7883,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 524, column 28",
-      "line": 524,
+      "location": "line 532, column 28",
+      "line": 532,
       "column": 28,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7802,8 +7892,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 533, column 25",
-      "line": 533,
+      "location": "line 541, column 25",
+      "line": 541,
       "column": 25,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7811,8 +7901,26 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 662, column 13",
-      "line": 662,
+      "location": "line 608, column 10",
+      "line": 608,
+      "column": 10,
+      "token": "filePath",
+      "class": "host-display-contract",
+      "reason": "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 609, column 7",
+      "line": 609,
+      "column": 7,
+      "token": "filePath",
+      "class": "host-display-contract",
+      "reason": "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it."
+    },
+    {
+      "path": "packages/opencode-plugin/src/tools/hoisted.ts",
+      "location": "line 671, column 13",
+      "line": 671,
       "column": 13,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7820,8 +7928,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 665, column 50",
-      "line": 665,
+      "location": "line 674, column 50",
+      "line": 674,
       "column": 50,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7829,8 +7937,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 669, column 78",
-      "line": 669,
+      "location": "line 678, column 78",
+      "line": 678,
       "column": 78,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7838,8 +7946,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 684, column 19",
-      "line": 684,
+      "location": "line 693, column 19",
+      "line": 693,
       "column": 19,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7847,8 +7955,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 725, column 28",
-      "line": 725,
+      "location": "line 734, column 28",
+      "line": 734,
       "column": 28,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7856,8 +7964,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 731, column 23",
-      "line": 731,
+      "location": "line 740, column 23",
+      "line": 740,
       "column": 23,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7865,8 +7973,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 740, column 50",
-      "line": 740,
+      "location": "line 749, column 50",
+      "line": 749,
       "column": 50,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7874,8 +7982,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 834, column 18",
-      "line": 834,
+      "location": "line 843, column 18",
+      "line": 843,
       "column": 18,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7883,8 +7991,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 835, column 36",
-      "line": 835,
+      "location": "line 844, column 36",
+      "line": 844,
       "column": 36,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7892,8 +8000,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 836, column 32",
-      "line": 836,
+      "location": "line 845, column 32",
+      "line": 845,
       "column": 32,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7901,8 +8009,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 837, column 78",
-      "line": 837,
+      "location": "line 846, column 78",
+      "line": 846,
       "column": 78,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7910,8 +8018,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 930, column 20",
-      "line": 930,
+      "location": "line 939, column 20",
+      "line": 939,
       "column": 20,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7919,8 +8027,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 931, column 25",
-      "line": 931,
+      "location": "line 940, column 25",
+      "line": 940,
       "column": 25,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7928,8 +8036,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 932, column 21",
-      "line": 932,
+      "location": "line 941, column 21",
+      "line": 941,
       "column": 21,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7937,8 +8045,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 933, column 80",
-      "line": 933,
+      "location": "line 942, column 80",
+      "line": 942,
       "column": 80,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7946,8 +8054,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1003, column 13",
-      "line": 1003,
+      "location": "line 1012, column 13",
+      "line": 1012,
       "column": 13,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7955,8 +8063,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1008, column 84",
-      "line": 1008,
+      "location": "line 1017, column 84",
+      "line": 1017,
       "column": 84,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7964,8 +8072,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1012, column 26",
-      "line": 1012,
+      "location": "line 1021, column 26",
+      "line": 1021,
       "column": 26,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7973,8 +8081,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1021, column 22",
-      "line": 1021,
+      "location": "line 1030, column 22",
+      "line": 1030,
       "column": 22,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -7982,8 +8090,8 @@
     },
     {
       "path": "packages/opencode-plugin/src/tools/hoisted.ts",
-      "location": "line 1028, column 9",
-      "line": 1028,
+      "location": "line 1037, column 9",
+      "line": 1037,
       "column": 9,
       "token": "filePath",
       "class": "compatibility-boundary",
@@ -10934,8 +11042,44 @@
     },
     {
       "path": "scripts/audit-v049-agent-surface.ts",
-      "location": "line 200, column 81",
+      "location": "line 198, column 63",
+      "line": 198,
+      "column": 63,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 200, column 52",
       "line": 200,
+      "column": 52,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 206, column 7",
+      "line": 206,
+      "column": 7,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 210, column 57",
+      "line": 210,
+      "column": 57,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 215, column 81",
+      "line": 215,
       "column": 81,
       "token": "filePath",
       "class": "audit-implementation",
@@ -10943,10 +11087,118 @@
     },
     {
       "path": "scripts/audit-v049-agent-surface.ts",
-      "location": "line 200, column 90",
-      "line": 200,
+      "location": "line 215, column 90",
+      "line": 215,
       "column": 90,
       "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 398, column 30",
+      "line": 398,
+      "column": 30,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 410, column 27",
+      "line": 410,
+      "column": 27,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 410, column 64",
+      "line": 410,
+      "column": 64,
+      "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 416, column 30",
+      "line": 416,
+      "column": 30,
+      "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 416, column 94",
+      "line": 416,
+      "column": 94,
+      "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 417, column 30",
+      "line": 417,
+      "column": 30,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 418, column 61",
+      "line": 418,
+      "column": 61,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 448, column 24",
+      "line": 448,
+      "column": 24,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 449, column 63",
+      "line": 449,
+      "column": 63,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 561, column 56",
+      "line": 561,
+      "column": 56,
+      "token": "filePath",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 562, column 55",
+      "line": 562,
+      "column": 55,
+      "token": "toFile",
+      "class": "audit-implementation",
+      "reason": "The audit or capture implementation names the vocabulary it checks."
+    },
+    {
+      "path": "scripts/audit-v049-agent-surface.ts",
+      "location": "line 563, column 9",
+      "line": 563,
+      "column": 9,
+      "token": "filePath",
       "class": "audit-implementation",
       "reason": "The audit or capture implementation names the vocabulary it checks."
     },

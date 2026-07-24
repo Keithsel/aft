@@ -195,6 +195,21 @@ function classifyOccurrence(path: string, line: string): { class: string; reason
   const historical = excludedPaths.get(path);
   if (historical) return { class: historical.class, reason: historical.reason };
   const surface = surfaceByPath.get(path);
+  // The hoisted read/write/edit trio on OpenCode advertises `filePath` on
+  // purpose: those tools override OpenCode built-ins and the host UI renders
+  // file headers from the recorded model input's `filePath` with no fallback
+  // (the record is taken from the raw model stream before any plugin hook can
+  // mirror it). This is the single sanctioned exception to the canonical
+  // `path` vocabulary; everything else on the agent surface stays prohibited.
+  if (
+    path === "packages/opencode-plugin/src/tools/hoisted.ts" &&
+    (/filePath: z/.test(line) || /^\s*\/\//.test(line))
+  ) {
+    return {
+      class: "host-display-contract",
+      reason: "OpenCode renders file headers from input.filePath; the hoisted trio must advertise it.",
+    };
+  }
   if (surface?.prohibited) {
     const agentText =
       /description|prompt|guideline|Example|example|README|documentation|`[^`]*(filePath|toFile)/i.test(
@@ -380,6 +395,9 @@ function capturePrefixInput(commit: string): JsonObject {
   };
 }
 
+/** Tools allowed to expose `filePath`: the OpenCode hoisted trio only. */
+const HOST_DISPLAY_CONTRACT_TOOLS = new Set(["read", "write", "edit"]);
+
 function assertNoLegacy(value: unknown, label: string): void {
   const serialized = JSON.stringify(value);
   for (const token of LEGACY) {
@@ -387,18 +405,50 @@ function assertNoLegacy(value: unknown, label: string): void {
   }
 }
 
+/**
+ * Like assertNoLegacy for a tool map, but exempts the hoisted trio's
+ * host-display-contract `filePath` (see classifyOccurrence). `toFile` stays
+ * prohibited everywhere; non-trio tools stay fully clean.
+ */
+function assertNoLegacyToolMap(tools: Record<string, unknown>, label: string): void {
+  for (const [name, definition] of Object.entries(tools)) {
+    const serialized = JSON.stringify(definition);
+    if (serialized.includes("toFile")) throw new Error(`${label} ${name} contains prohibited toFile`);
+    if (serialized.includes("filePath") && !HOST_DISPLAY_CONTRACT_TOOLS.has(name)) {
+      throw new Error(`${label} ${name} contains prohibited filePath`);
+    }
+  }
+}
+
 function auditEmittedSurfaces(): void {
   const subc = JSON.parse(readFileSync(join(ROOT, SUBC_SCHEMA_PATH), "utf8")) as JsonObject;
-  assertNoLegacy(subc, SUBC_SCHEMA_PATH);
+  // The subc artifact is generated from the OpenCode tool map, so the trio
+  // carries the host-display-contract spelling there too.
+  const subcTools = (subc.tools ?? subc) as Record<string, unknown>;
+  if (Array.isArray(subcTools)) {
+    assertNoLegacyToolMap(
+      Object.fromEntries(subcTools.map((entry) => [(entry as { name: string }).name, entry])),
+      SUBC_SCHEMA_PATH,
+    );
+  } else {
+    assertNoLegacyToolMap(subcTools, SUBC_SCHEMA_PATH);
+  }
   for (const profile of profiles) {
     const config = profileConfigs[profile.id];
     const emitted = profile.harness === "opencode" ? captureOpenCode(config) : capturePi(config);
-    assertNoLegacy(emitted, profile.id);
+    if (profile.harness === "opencode") {
+      assertNoLegacyToolMap(emitted, profile.id);
+    } else {
+      assertNoLegacy(emitted, profile.id);
+    }
     if (profile.surface === "all") {
       for (const [name, definition] of Object.entries(emitted)) {
         const serialized = JSON.stringify(definition);
         if (name === "read" || name === "write" || name === "edit") {
-          if (!serialized.includes('"path"')) throw new Error(`${profile.id} ${name} does not expose path`);
+          // OpenCode: filePath is the host display contract; Pi keeps path.
+          const required = profile.harness === "opencode" ? '"filePath"' : '"path"';
+          if (!serialized.includes(required))
+            throw new Error(`${profile.id} ${name} does not expose ${required}`);
         }
       }
     }
@@ -507,7 +557,17 @@ function main(): void {
   if (args.has("--write-prefix-capture")) writePrefixCapture(commit);
   if (args.has("--write-manifest")) writeManifest(commit);
   if (existsSync(join(ROOT, PREFIX_CAPTURE_PATH))) {
-    assertNoLegacy(JSON.parse(readFileSync(join(ROOT, PREFIX_CAPTURE_PATH), "utf8")), PREFIX_CAPTURE_PATH);
+    // The prefix capture embeds the OpenCode tool maps, which legitimately
+    // carry the hoisted trio's host-display-contract `filePath`. Apply the
+    // per-tool exemption to each captured tool map; `toFile` and non-trio
+    // `filePath` stay prohibited.
+    const capture = JSON.parse(readFileSync(join(ROOT, PREFIX_CAPTURE_PATH), "utf8")) as {
+      captures?: Array<{ capture_id?: string; prefix_input?: { tools?: Record<string, unknown> } }>;
+    };
+    for (const entry of capture.captures ?? []) {
+      const tools = entry.prefix_input?.tools;
+      if (tools) assertNoLegacyToolMap(tools, `${PREFIX_CAPTURE_PATH} ${entry.capture_id ?? ""}`);
+    }
   }
   if (existsSync(join(ROOT, MANIFEST_PATH))) verifyManifest();
   console.log(`v0.49 agent surface audit passed (${commit})`);
