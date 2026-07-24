@@ -2563,6 +2563,48 @@ pub(crate) fn trigger_search_index_reload_if_evicted(ctx: &AppContext) -> bool {
     .unwrap_or(false)
 }
 
+/// Restart a search-index load after its build receiver disconnected without
+/// delivering an index (the worker exited through a generation/admission check
+/// and dropped its sender). Without this, the root is left with no in-RAM index
+/// and no receiver, so health reports "building" forever — nothing reschedules
+/// the load until a later search query happens to call
+/// [`trigger_search_index_reload_if_evicted`]. Capped via
+/// `allow_search_index_disconnect_reschedule` at one automatic replacement per
+/// configure generation; after that the query-triggered reload remains the
+/// recovery path so a persistently failing worker cannot loop on the drain
+/// thread.
+pub(crate) fn restart_search_index_after_load_disconnect(ctx: &AppContext) -> bool {
+    let generation = ctx.configure_generation();
+    ctx.run_if_subc_bound_generation(generation, || {
+        let _reload_guard = ctx.artifact_reload_guard();
+        // A replacement (or a completed build) may have raced ahead of the drain;
+        // only reschedule when the index is still genuinely missing and idle.
+        // `missing_artifact_loads` also enforces `config.search_index`.
+        if !missing_artifact_loads(ctx).search {
+            return false;
+        }
+        if ctx.shared_artifacts_read_only() || ctx.canonical_cache_root_opt().is_none() {
+            return false;
+        }
+        // Consume the one-per-generation slot only now that every guard passed,
+        // so a raced-ahead replacement does not waste the slot.
+        if !ctx.allow_search_index_disconnect_reschedule() {
+            crate::slog_info!(
+                "search index load disconnected without an index; automatic replacement already used for this configure generation, leaving query-triggered reload as recovery"
+            );
+            return false;
+        }
+        let started = start_artifact_loads(schedule_artifact_loads(ctx, true, false));
+        if started {
+            crate::slog_info!(
+                "search index load disconnected without an index; scheduled one automatic replacement load"
+            );
+        }
+        started
+    })
+    .unwrap_or(false)
+}
+
 #[cfg(test)]
 pub(crate) fn set_semantic_refresh_restart_result_for_test(result: Option<bool>) {
     SEMANTIC_REFRESH_RESTART_ATTEMPTS.with(|attempts| attempts.set(0));

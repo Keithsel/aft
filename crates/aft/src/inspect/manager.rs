@@ -593,6 +593,32 @@ impl InspectManager {
         )
     }
 
+    /// Whether the latest persisted dead_code aggregate reported
+    /// `callgraph_available:false` — i.e. dead_code was suppressed because the
+    /// callgraph store was not ready when it scanned. Health uses this to avoid
+    /// reporting tier2 as permanently "building" for a root whose only missing
+    /// category is dead_code blocked on the callgraph store. Mirrors the
+    /// suppression rule in [`Self::latest_tier2_counts`].
+    pub fn dead_code_blocked_on_callgraph(
+        &self,
+        inspect_dir: PathBuf,
+        project_root: PathBuf,
+    ) -> bool {
+        let Ok(cache) = self.cache_for_paths(inspect_dir, project_root) else {
+            return false;
+        };
+        cache
+            .latest_aggregate_any_hash(InspectCategory::DeadCode)
+            .ok()
+            .flatten()
+            .and_then(|payload| {
+                payload
+                    .get("callgraph_available")
+                    .and_then(serde_json::Value::as_bool)
+            })
+            == Some(false)
+    }
+
     pub fn cache_for_paths(
         &self,
         inspect_dir: PathBuf,
@@ -3684,6 +3710,62 @@ mod guard_tests {
                 .expect("read clone aggregate")
                 .is_none(),
             "same-key clone with a different manifest must not reuse the source root's cached count"
+        );
+    }
+
+    #[test]
+    fn dead_code_blocked_on_callgraph_reads_latest_aggregate_flag() {
+        // Health asks the manager whether dead_code is only missing because the
+        // callgraph store was not ready when it scanned. The answer must track
+        // the latest persisted dead_code aggregate's `callgraph_available` flag
+        // (mirroring the suppression rule in `latest_tier2_counts`).
+        let dir = tempfile::tempdir().unwrap();
+        let project_root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::write(project_root.join("lib.rs"), "pub fn marker() {}\n").unwrap();
+        let manager = InspectManager::new();
+        let inspect_dir = dir.path().join("inspect");
+
+        // No aggregate yet → not blocked.
+        assert!(!manager.dead_code_blocked_on_callgraph(inspect_dir.clone(), project_root.clone()));
+
+        let cache = manager
+            .cache_for_paths(inspect_dir.clone(), project_root.clone())
+            .expect("open cache");
+        let key = JobKey::for_project_category(InspectCategory::DeadCode);
+        let hash = cache
+            .contribution_set_hash(InspectCategory::DeadCode)
+            .expect("contribution hash");
+
+        // A callgraph-backed dead_code aggregate → not blocked, count surfaced.
+        cache
+            .store_tier2_aggregate(
+                key.clone(),
+                &hash,
+                serde_json::json!({ "count": 3, "callgraph_available": true }),
+            )
+            .expect("store callgraph-backed aggregate");
+        assert!(!manager.dead_code_blocked_on_callgraph(inspect_dir.clone(), project_root.clone()));
+        assert_eq!(
+            manager
+                .latest_tier2_counts(inspect_dir.clone(), project_root.clone())
+                .0,
+            Some(3)
+        );
+
+        // A callgraph_unavailable aggregate (store not ready) → blocked, and the
+        // count stays suppressed so the status bar never fabricates a zero.
+        cache
+            .store_tier2_aggregate(
+                key,
+                &hash,
+                crate::inspect::scanners::dead_code::callgraph_unavailable_aggregate(1),
+            )
+            .expect("store callgraph_unavailable aggregate");
+        assert!(manager.dead_code_blocked_on_callgraph(inspect_dir.clone(), project_root.clone()));
+        assert_eq!(
+            manager.latest_tier2_counts(inspect_dir, project_root).0,
+            None,
+            "callgraph_unavailable dead_code must stay suppressed"
         );
     }
 

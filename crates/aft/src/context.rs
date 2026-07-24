@@ -265,6 +265,13 @@ struct StatusBarTier2 {
     todos: Option<usize>,
     stale: bool,
     generation: u64,
+    /// True when the latest dead_code aggregate reported `callgraph_available:
+    /// false` (the callgraph store was not ready when dead_code scanned). Health
+    /// uses this to tell "tier2 still building" apart from "tier2 complete except
+    /// dead_code, which is blocked on the callgraph store" — the latter must not
+    /// report "building" forever, because nothing recomputes dead_code until the
+    /// callgraph store becomes ready.
+    dead_code_blocked_on_callgraph: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1397,6 +1404,12 @@ pub struct AppContext {
     search_index_rx_generation: AtomicU64,
     search_index_rx_epoch: AtomicU64,
     search_index_rx_terminal_epoch: Arc<AtomicU64>,
+    /// `(configure_generation, automatic_replacement_attempts)`. Caps the
+    /// drain-path replacement of a search-index load whose worker disconnected
+    /// without delivering an index, so a persistently failing worker cannot be
+    /// relaunched in a loop on the drain thread. Resets when the configure
+    /// generation advances.
+    search_index_disconnect_reschedule: parking_lot::Mutex<(u64, u32)>,
     search_persist_epoch: crate::root_cache::ArtifactPublishEpoch,
     pending_search_index_paths: parking_lot::Mutex<BTreeSet<PathBuf>>,
     symbol_cache: SharedSymbolCache,
@@ -1752,6 +1765,7 @@ impl AppContext {
             search_index_rx_generation: AtomicU64::new(0),
             search_index_rx_epoch: AtomicU64::new(0),
             search_index_rx_terminal_epoch: Arc::new(AtomicU64::new(0)),
+            search_index_disconnect_reschedule: parking_lot::Mutex::new((0, 0)),
             search_persist_epoch: crate::root_cache::ArtifactPublishEpoch::default(),
             pending_search_index_paths: parking_lot::Mutex::new(BTreeSet::new()),
             symbol_cache,
@@ -1946,7 +1960,9 @@ impl AppContext {
         // as "building" is a permanent lie that keeps module health degraded
         // whenever any worktree is bound.
         let borrows_shared_artifacts = self.shared_artifacts_read_only.load(Ordering::SeqCst);
-        let search_index_status = if search_index.as_ref().is_some_and(|index| index.ready)
+        let search_index_status = if search_index
+            .as_ref()
+            .is_some_and(|index| index.ready || index.build_denied)
             || (borrows_shared_artifacts && config.search_index)
         {
             "ready"
@@ -1979,7 +1995,15 @@ impl AppContext {
         } else {
             "disabled"
         };
-        let tier2_complete = tier2.dead_code.is_some()
+        // dead_code is suppressed (reports `None`) while the callgraph store is
+        // not ready, so a root whose only missing category is dead_code would
+        // otherwise stay "building" forever: nothing recomputes dead_code until
+        // the callgraph store becomes ready. Treat that blocked-on-callgraph case
+        // as complete and let the callgraph component's own status tell the
+        // callgraph story, instead of double-reporting it here as a permanent
+        // "building".
+        let dead_code_blocked_on_callgraph = tier2.dead_code_blocked_on_callgraph;
+        let tier2_complete = (tier2.dead_code.is_some() || dead_code_blocked_on_callgraph)
             && tier2.unused_exports.is_some()
             && tier2.duplicates.is_some()
             && !tier2.stale;
@@ -2114,6 +2138,19 @@ impl AppContext {
         if current != previous {
             tier2.generation = tier2.generation.wrapping_add(1);
         }
+    }
+
+    /// Record whether the latest dead_code aggregate was suppressed because the
+    /// callgraph store was not ready (`callgraph_available:false`). Kept separate
+    /// from [`update_status_bar_tier2`] because the flag is health metadata, not a
+    /// status-bar count: it never renders in the bar and need not bump the
+    /// count-generation used for status-bar cache invalidation.
+    pub(crate) fn set_status_bar_tier2_dead_code_blocked_on_callgraph(&self, blocked: bool) {
+        let mut tier2 = self
+            .status_bar_tier2
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        tier2.dead_code_blocked_on_callgraph = blocked;
     }
 
     /// Borrow the cached project gitignore matcher. Returns `None` when no
@@ -4056,6 +4093,26 @@ impl AppContext {
 
     pub(crate) fn search_index_rx_epoch(&self) -> u64 {
         self.search_index_rx_epoch.load(Ordering::SeqCst)
+    }
+
+    /// Allow one automatic search-index replacement load per configure
+    /// generation. The drain disconnect path calls this before rescheduling a
+    /// load whose worker exited without delivering an index; capping it at one
+    /// prevents a persistently failing worker from being relaunched in a loop on
+    /// the drain thread. After the cap is hit, the query-triggered reload
+    /// (`trigger_search_index_reload_if_evicted`) remains the recovery path.
+    pub(crate) fn allow_search_index_disconnect_reschedule(&self) -> bool {
+        const MAX_REPLACEMENTS_PER_GENERATION: u32 = 1;
+        let generation = self.configure_generation();
+        let mut state = self.search_index_disconnect_reschedule.lock();
+        if state.0 != generation {
+            *state = (generation, 0);
+        }
+        if state.1 >= MAX_REPLACEMENTS_PER_GENERATION {
+            return false;
+        }
+        state.1 += 1;
+        true
     }
 
     pub(crate) fn next_search_persist_epoch(&self) -> u64 {
@@ -7750,6 +7807,101 @@ mod status_emitter_tests {
             other => panic!("unexpected frame for ctx B: {other:?}"),
         }
         assert!(rx_b.try_recv().is_err());
+    }
+}
+
+#[cfg(test)]
+mod health_warming_honesty_tests {
+    use super::*;
+    use crate::parser::TreeSitterProvider;
+
+    fn ctx_with_config(config: Config) -> AppContext {
+        AppContext::new(Box::new(TreeSitterProvider::new()), config)
+    }
+
+    fn health_search_status(ctx: &AppContext) -> &'static str {
+        let root = std::path::Path::new("/tmp/health-warming-honesty-test");
+        ctx.try_health_snapshot(root)
+            .search_index
+            .expect("search_index component present")
+            .status
+    }
+
+    fn health_tier2_status(ctx: &AppContext) -> &'static str {
+        let root = std::path::Path::new("/tmp/health-warming-honesty-test");
+        ctx.try_health_snapshot(root)
+            .tier2
+            .expect("tier2 component present")
+            .status
+    }
+
+    #[test]
+    fn write_denied_search_index_reports_ready_not_building() {
+        // A write-denied cold build installs an empty index that is flagged
+        // build-denied and stays not-ready (so grep keeps the fallback walk).
+        // Health must treat it as settled, not "building" forever.
+        let config = Config {
+            search_index: true,
+            ..Config::default()
+        };
+        let ctx = ctx_with_config(config);
+        let mut index = SearchIndex::new();
+        index.build_denied = true;
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(index);
+
+        assert_eq!(
+            health_search_status(&ctx),
+            "ready",
+            "a build-denied index is a terminal settled state and must not report building forever"
+        );
+    }
+
+    #[test]
+    fn in_progress_search_index_still_reports_building() {
+        // Control: a genuinely not-ready, not-denied index (a real build in
+        // flight) must still report building — the build-denied carve-out must
+        // not leak into ordinary in-progress builds.
+        let config = Config {
+            search_index: true,
+            ..Config::default()
+        };
+        let ctx = ctx_with_config(config);
+        let index = SearchIndex::new(); // ready=false, build_denied=false
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(index);
+
+        assert_eq!(health_search_status(&ctx), "building");
+    }
+
+    #[test]
+    fn tier2_blocked_on_callgraph_reports_ready_not_building() {
+        // dead_code is suppressed (None) while the callgraph store is not ready,
+        // but unused_exports/duplicates are complete and fresh. Health must not
+        // report tier2 as "building" forever for a cycle that is otherwise
+        // complete — the callgraph component tells the callgraph story.
+        let ctx = ctx_with_config(Config::default()); // inspect.enabled defaults true
+        ctx.update_status_bar_tier2(None, Some(3), Some(2), None, false);
+        ctx.set_status_bar_tier2_dead_code_blocked_on_callgraph(true);
+
+        assert_eq!(
+            health_tier2_status(&ctx),
+            "ready",
+            "tier2 complete except dead_code-blocked-on-callgraph must not stay building"
+        );
+    }
+
+    #[test]
+    fn tier2_missing_dead_code_without_callgraph_block_reports_building() {
+        // Control: with no callgraph block recorded, a missing dead_code count is
+        // a genuine in-progress scan and must still report building.
+        let ctx = ctx_with_config(Config::default());
+        ctx.update_status_bar_tier2(None, Some(3), Some(2), None, false);
+        ctx.set_status_bar_tier2_dead_code_blocked_on_callgraph(false);
+
+        assert_eq!(health_tier2_status(&ctx), "building");
     }
 }
 

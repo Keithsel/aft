@@ -324,9 +324,10 @@ pub(crate) fn drain_inspect_events_for_generation(ctx: &AppContext, generation: 
     // an explicit aft_inspect call.
     if drained > 0 || reuse_completed {
         if let Some(project_root) = ctx.config().project_root.clone() {
+            let inspect_dir = ctx.inspect_dir();
             let (dead_code, unused_exports, duplicates) = ctx
                 .inspect_manager()
-                .latest_tier2_counts(ctx.inspect_dir(), project_root);
+                .latest_tier2_counts(inspect_dir.clone(), project_root.clone());
             // Don't clear the `~` stale marker until the whole serial Tier-2
             // cycle has drained. While any category is still in flight the
             // already-persisted categories may predate the latest edit, so
@@ -334,6 +335,14 @@ pub(crate) fn drain_inspect_events_for_generation(ctx: &AppContext, generation: 
             // last-known value rather than fabricating a `0`.
             let stale = ctx.inspect_manager().tier2_any_in_flight();
             ctx.update_status_bar_tier2(dead_code, unused_exports, duplicates, None, stale);
+            // Health must distinguish "tier2 still building" from "tier2 complete
+            // except dead_code, which is blocked on the callgraph store". Refresh
+            // the flag from the same latest aggregate the counts came from so the
+            // two never disagree.
+            let blocked = ctx
+                .inspect_manager()
+                .dead_code_blocked_on_callgraph(inspect_dir, project_root);
+            ctx.set_status_bar_tier2_dead_code_blocked_on_callgraph(blocked);
             ctx.status_emitter().signal(ctx.build_status_snapshot());
         }
     }
@@ -478,7 +487,14 @@ pub fn drain_search_index_events(ctx: &AppContext) {
                     .search_index()
                     .write()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if search_index.as_ref().is_some_and(|index| !index.ready) {
+                // A build-denied index is a terminal settled state (write access
+                // refused), not an in-progress build, so keep it: clearing it
+                // would flip health back to "building" for a root that can never
+                // produce a real index here.
+                if search_index
+                    .as_ref()
+                    .is_some_and(|index| !index.ready && !index.build_denied)
+                {
                     *search_index = None;
                 }
                 true
@@ -487,6 +503,12 @@ pub fn drain_search_index_events(ctx: &AppContext) {
         if !cleared {
             return;
         }
+        // The worker dropped its sender without delivering an index (a lost
+        // load). Left alone, the root now has no index and no receiver, so health
+        // would report "building" forever — nothing reschedules the load until a
+        // later search query happens to run. Schedule one automatic replacement
+        // load (capped per configure generation) so the root recovers on its own.
+        crate::commands::configure::restart_search_index_after_load_disconnect(ctx);
     }
 
     if installed_index || disconnected {
@@ -3190,6 +3212,66 @@ mod tests {
     }
 
     #[test]
+    fn callgraph_ready_transition_schedules_tier2_dead_code_rescan() {
+        // When the callgraph store transitions to ready, the drain must request a
+        // tier2 refresh pull. dead_code is suppressed (callgraph_available:false)
+        // while no store is ready; this pull is what eventually re-runs dead_code
+        // against the now-ready store and replaces that aggregate, flipping the
+        // root to genuinely complete instead of "building" forever.
+        let root = tempfile::tempdir().unwrap();
+        let storage = tempfile::tempdir().unwrap();
+        let source = root.path().join("lib.rs");
+        std::fs::write(&source, "pub fn marker() {}\n").unwrap();
+        let project_root = std::fs::canonicalize(root.path()).unwrap();
+        let ctx = AppContext::new(
+            default_language_provider_factory(),
+            Config {
+                project_root: Some(project_root.clone()),
+                storage_dir: Some(storage.path().to_path_buf()),
+                callgraph_chunk_size: 1,
+                ..Config::default()
+            },
+        );
+        ctx.set_canonical_cache_root(project_root.clone());
+        let (store, _stats) = CallGraphStore::cold_build_with_lease_chunked(
+            ctx.callgraph_store_dir(),
+            project_root,
+            &[source],
+            1,
+        )
+        .unwrap();
+
+        assert!(
+            !ctx.tier2_pull_demand_pending(),
+            "no tier2 pull demand before the callgraph store is ready"
+        );
+
+        let generation = ctx.configure_generation();
+        let (tx, rx) = crossbeam_channel::unbounded();
+        ctx.note_callgraph_store_rx_generation(generation);
+        ctx.next_callgraph_store_rx_epoch();
+        *ctx.callgraph_store_rx().lock() = Some(rx);
+        tx.send(CallGraphStoreBuildEvent::Ready {
+            store,
+            fulfilled_force_token: None,
+            publication_epoch: ctx.callgraph_persist_epoch_flag().current(),
+        })
+        .unwrap();
+        drop(tx);
+
+        drain_callgraph_store_events(&ctx);
+
+        assert!(
+            ctx.callgraph_store().read().unwrap().is_some(),
+            "the ready callgraph store must install"
+        );
+        assert!(
+            ctx.tier2_pull_demand_pending(),
+            "the callgraph-ready transition must schedule a tier2 refresh pull so dead_code is rescanned against the ready store"
+        );
+    }
+
+    #[test]
     fn stale_callgraph_receiver_cannot_clear_newer_same_generation_receiver() {
         let _guard = ARTIFACT_DRAIN_TEST_MUTEX.lock().unwrap();
         let root = tempfile::tempdir().unwrap();
@@ -3494,6 +3576,129 @@ mod tests {
         );
         assert!(ctx.search_index_rx().read().unwrap().is_none());
         assert_eq!(ctx.take_pending_search_index_paths(), vec![pending]);
+    }
+
+    #[test]
+    fn search_index_disconnect_reschedule_caps_at_one_per_generation() {
+        // The drain path replaces a lost search-index load at most once per
+        // configure generation; after that the query-triggered reload is the
+        // recovery path, so a persistently failing worker cannot be relaunched in
+        // a loop on the drain thread.
+        let ctx = AppContext::new(default_language_provider_factory(), Config::default());
+        assert!(
+            ctx.allow_search_index_disconnect_reschedule(),
+            "the first automatic replacement in a generation must be allowed"
+        );
+        assert!(
+            !ctx.allow_search_index_disconnect_reschedule(),
+            "a second automatic replacement in the same generation must be denied"
+        );
+        ctx.advance_configure_generation();
+        assert!(
+            ctx.allow_search_index_disconnect_reschedule(),
+            "advancing the configure generation must reset the replacement cap"
+        );
+    }
+
+    #[test]
+    fn lost_search_load_disconnect_schedules_one_replacement_that_installs() {
+        let _guard = ARTIFACT_DRAIN_TEST_MUTEX.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(temp.path()).unwrap();
+        let storage = temp.path().join("storage");
+        std::fs::create_dir_all(&storage).unwrap();
+        std::fs::write(
+            root.join("lib.rs"),
+            "pub fn LostLoadNeedle() -> bool { true }\n",
+        )
+        .unwrap();
+        let ctx = AppContext::new(
+            default_language_provider_factory(),
+            Config {
+                project_root: Some(root.clone()),
+                storage_dir: Some(storage),
+                search_index: true,
+                semantic_search: false,
+                callgraph_store: false,
+                ..Config::default()
+            },
+        );
+        ctx.set_canonical_cache_root(root.clone());
+
+        // Simulate a lost post-configure load: the build worker dropped its
+        // sender without delivering an index, leaving a not-ready index and a
+        // disconnected receiver. Before the fix nothing rescheduled this, so
+        // health reported "building" forever.
+        let mut stranded = crate::search_index::SearchIndex::new();
+        stranded.ready = false;
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(stranded);
+        let generation = ctx.configure_generation();
+        let (tx, rx) = crossbeam_channel::unbounded::<crate::search_index::SearchIndex>();
+        drop(tx); // disconnect without sending
+        ctx.install_search_index_rx(rx, generation);
+
+        drain_search_index_events(&ctx);
+
+        assert!(
+            ctx.search_index_rx().read().unwrap().is_some(),
+            "a lost load must schedule a replacement search-index load (fresh receiver installed)"
+        );
+
+        // The replacement worker builds and publishes; draining installs it.
+        // Poll until ready (bounded so a regression fails instead of hanging).
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            drain_search_index_events(&ctx);
+            let ready = ctx
+                .search_index()
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+                .is_some_and(|index| index.ready);
+            if ready {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "replacement search-index load did not install before the deadline"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        let matches = ctx
+            .search_index()
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .expect("installed replacement index")
+            .grep("LostLoadNeedle", true, &[], &[], &root, 10)
+            .matches
+            .len();
+        assert_eq!(
+            matches, 1,
+            "the replacement index must actually serve queries"
+        );
+
+        // The one-per-generation cap is now consumed. A second lost load in the
+        // same generation must NOT schedule another replacement (no loop); the
+        // query-triggered reload remains the recovery path.
+        let mut stranded_again = crate::search_index::SearchIndex::new();
+        stranded_again.ready = false;
+        *ctx.search_index()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(stranded_again);
+        let (tx2, rx2) = crossbeam_channel::unbounded::<crate::search_index::SearchIndex>();
+        drop(tx2);
+        ctx.install_search_index_rx(rx2, ctx.configure_generation());
+
+        drain_search_index_events(&ctx);
+
+        assert!(
+            ctx.search_index_rx().read().unwrap().is_none(),
+            "the cap must prevent a second automatic replacement in the same generation"
+        );
     }
 
     #[test]

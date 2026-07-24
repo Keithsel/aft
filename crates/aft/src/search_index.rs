@@ -142,6 +142,12 @@ pub struct SearchIndex {
     pub files: Arc<Vec<FileEntry>>,
     pub path_to_id: Arc<HashMap<PathBuf, u32>>,
     pub ready: bool,
+    /// Set when a cold build was refused because this root may not write the
+    /// shared cache artifact. The index stays empty and `ready` stays false so
+    /// grep/glob keep serving through the bounded fallback walk, but health must
+    /// not report "building" for it: nothing will ever produce a real index here
+    /// until write access changes, so it is a terminal settled state.
+    pub build_denied: bool,
     project_root: PathBuf,
     git_head: Option<String>,
     max_file_size: u64,
@@ -639,6 +645,7 @@ impl SearchIndex {
             files: Arc::new(Vec::new()),
             path_to_id: Arc::new(HashMap::new()),
             ready: false,
+            build_denied: false,
             project_root: PathBuf::new(),
             git_head: None,
             max_file_size: DEFAULT_MAX_FILE_SIZE,
@@ -668,9 +675,20 @@ impl SearchIndex {
     ) -> Self {
         let started = std::time::Instant::now();
         if !artifact_write_allowed(root, cache_dir, &cache_dir.join("cache.bin")) {
+            // Write-denied roots cannot persist or materialize a real index.
+            // Return an empty index flagged as build-denied (ready stays false
+            // so grep/glob keep using the bounded fallback walk). Health reads
+            // the flag to avoid reporting a permanent "building" state for a
+            // build that was never going to run here.
+            crate::slog_info!(
+                "search index cold build denied: {} may not write the cache artifact at {}; reporting build-denied instead of building",
+                root.display(),
+                cache_dir.display()
+            );
             let mut index = Self::new();
             index.project_root = root.to_path_buf();
             index.max_file_size = max_file_size;
+            index.build_denied = true;
             return index;
         }
         match build_streaming_index(root, max_file_size, cache_dir) {
@@ -1248,6 +1266,7 @@ impl SearchIndex {
             files: Arc::new(files),
             path_to_id: Arc::new(path_to_id),
             ready: false,
+            build_denied: false,
             project_root,
             git_head,
             max_file_size,
@@ -2628,6 +2647,7 @@ fn build_streaming_index(
         files: Arc::new(files),
         path_to_id: Arc::new(path_to_id),
         ready: false,
+        build_denied: false,
         project_root,
         git_head,
         max_file_size,
@@ -6649,5 +6669,41 @@ mod warm_reload_verification_tests {
         cache_freshness::watch_hash_file_for_debug(&path);
         index.verify_against_disk_with_strategy(None, cache_freshness::VerifyStrategy::StatFirst);
         assert_eq!(cache_freshness::watched_hash_file_count_for_debug(), 1);
+    }
+
+    #[test]
+    fn write_denied_cold_build_flags_build_denied_instead_of_building() {
+        // A borrow-only root cannot write the shared search artifact. The cold
+        // build must flag the empty index as build-denied (and leave it
+        // not-ready) so health reports a settled state while grep/glob keep
+        // serving through the bounded fallback walk — never a permanent
+        // "building".
+        let project = tempfile::tempdir().expect("project");
+        let source = project.path().join("lib.rs");
+        fs::write(&source, "pub fn answer() -> i32 { 42 }\n").expect("write source");
+        let project_key = "shared-search-artifact".to_string();
+        crate::root_cache::configure_artifact_access(project.path(), &project_key, true);
+
+        // cache_dir.file_name() == project_key (the shared key) → write denied.
+        let storage = tempfile::tempdir().expect("storage");
+        let cache_dir = storage.path().join(&project_key);
+        let index = SearchIndex::build_with_limit_to_cache_dir(
+            project.path(),
+            DEFAULT_MAX_FILE_SIZE,
+            &cache_dir,
+        );
+
+        assert!(
+            index.build_denied,
+            "a write-denied cold build must flag build_denied so health can report a settled state"
+        );
+        assert!(
+            !index.ready,
+            "build_denied must keep ready=false so grep/glob keep using the bounded fallback walk"
+        );
+        assert!(
+            index.files.is_empty(),
+            "a write-denied build must not materialize an in-RAM index"
+        );
     }
 }
