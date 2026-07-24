@@ -208,6 +208,43 @@ bun run typecheck 2>&1 || { echo "Error: Typecheck failed"; exit 1; }
 echo "  cargo fmt --check..."
 cargo fmt --check 2>&1 || { echo "Error: cargo fmt --check failed (run 'cargo fmt')"; exit 1; }
 
+# Publication-surface gates, run LOCALLY before the tag exists.
+#
+# These same gates run inside the release workflow's publish job, i.e. AFTER
+# the full test matrix and the whole build matrix have already burned ~20
+# minutes. Any drift in the governed manifests (a merged PR that touched a
+# governed surface file, a host version bump that moved the prefix capture, a
+# manifest whose source_commit no longer matches) fails there, which means a
+# dead tag and a full re-cut. The v0.49.0 release burned eight tag attempts on
+# exactly this class before the checks moved here.
+#
+# Only run when the gate script for the current release line exists: the gates
+# are version-scoped artifacts (release-gate-vNNN.mjs), so a later release line
+# without one skips this block instead of failing.
+release_line="$(printf '%s' "$VERSION" | cut -d. -f1,2)"
+line_slug="v${release_line//./}"
+gate_script="scripts/release-gate-${line_slug}.mjs"
+audit_script="scripts/audit-${line_slug}-agent-surface.ts"
+if [[ -f "$gate_script" ]]; then
+  echo "  agent surface audit..."
+  bun "$audit_script" >/dev/null 2>&1 || {
+    echo "Error: agent surface audit failed"
+    echo "  ↳ run: bun $audit_script"
+    echo "  ↳ if a governed surface changed on purpose, regenerate with"
+    echo "    --write-allowlist --write-prefix-capture --write-manifest"
+    exit 1
+  }
+
+  echo "  publication gates ($gate_script)..."
+  node "$gate_script" >/dev/null 2>&1 || {
+    echo "Error: publication gates failed"
+    echo "  ↳ run: node $gate_script"
+    echo "  ↳ stale manifests regenerate via the audit script; the release"
+    echo "    manifest's source_commit must match the surface manifest's"
+    exit 1
+  }
+fi
+
 # Slow checks AFTER the fast ones pass.
 #
 # TRUST_CI=1: skip the local Rust/JS/docker test re-run when CI is already
