@@ -78,14 +78,14 @@ opencode-aft/
 - Key files: `crates/aft/src/executor/mod.rs`, `crates/aft/src/executor/tests.rs`
 
 **`crates/aft/src/bash_background/`:**
-- Purpose: Manage background bash tasks, PTY sessions, and output compression.
-- Contains: Process pool, PTY runtime, watchdog thread, persistence, buffer management
-- Key files: `crates/aft/src/bash_background/registry.rs`, `crates/aft/src/bash_background/process.rs`, `crates/aft/src/bash_background/pty_process.rs`, `crates/aft/src/bash_background/watchdog.rs`
+- Purpose: Manage background bash tasks, PTY sessions, async pattern watches, and output compression.
+- Contains: Process pool, PTY runtime, watchdog thread, persistence, buffer management, async pattern watches
+- Key files: `crates/aft/src/bash_background/registry.rs`, `crates/aft/src/bash_background/process.rs`, `crates/aft/src/bash_background/pty_process.rs`, `crates/aft/src/bash_background/watchdog.rs`, `crates/aft/src/bash_background/watches.rs`
 
 **`crates/aft/src/db/`:**
-- Purpose: Provide persistent SQLite-backed storage for backups, bash tasks, compression events, and state.
+- Purpose: Provide persistent SQLite-backed storage for backups, bash tasks, pattern watches, compression events, and state.
 - Contains: Database modules for each storage domain
-- Key files: `crates/aft/src/db/mod.rs`, `crates/aft/src/db/backups.rs`, `crates/aft/src/db/bash_tasks.rs`, `crates/aft/src/db/compression_events.rs`, `crates/aft/src/db/state.rs`
+- Key files: `crates/aft/src/db/mod.rs`, `crates/aft/src/db/backups.rs`, `crates/aft/src/db/bash_tasks.rs`, `crates/aft/src/db/bash_watches.rs`, `crates/aft/src/db/compression_events.rs`, `crates/aft/src/db/state.rs`
 
 **`crates/aft/src/patch/`:**
 - Purpose: Implement patch parsing, sequence matching, fuzzy hunk matching, and update execution.
@@ -99,8 +99,8 @@ opencode-aft/
 
 **`packages/aft-bridge/`:**
 - Purpose: Ship the shared bridge transport layer used by both OpenCode and Pi plugins.
-- Contains: Transport factory routing selection (via user-tier `subc.connection_file`), subc client connection pooling, session lifecycle records caching (`SessionRecord` wrapping route entry and bg subscriptions), background event subscriptions, bridge lifecycle management, binary resolution, download, ONNX runtime detection, storage migration, compact formatting, zoom-format rendering
-- Key files: `packages/aft-bridge/src/bridge.ts`, `packages/aft-bridge/src/pool.ts`, `packages/aft-bridge/src/subc-transport.ts`, `packages/aft-bridge/src/transport.ts`, `packages/aft-bridge/src/transport-factory.ts`, `packages/aft-bridge/src/resolver.ts`, `packages/aft-bridge/src/downloader.ts`, `packages/aft-bridge/src/onnx-runtime.ts`, `packages/aft-bridge/src/migration.ts`
+- Contains: Transport factory routing selection (via user-tier `subc.connection_file`), subc client connection pooling, session lifecycle records caching (`SessionRecord` wrapping route entry and bg subscriptions), background event subscriptions, bridge lifecycle management, binary resolution, download, ONNX runtime detection, storage migration, compact formatting, zoom-format rendering, canonical path alias resolution, and host-neutral error adaptation
+- Key files: `packages/aft-bridge/src/bridge.ts`, `packages/aft-bridge/src/pool.ts`, `packages/aft-bridge/src/subc-transport.ts`, `packages/aft-bridge/src/transport.ts`, `packages/aft-bridge/src/transport-factory.ts`, `packages/aft-bridge/src/resolver.ts`, `packages/aft-bridge/src/downloader.ts`, `packages/aft-bridge/src/onnx-runtime.ts`, `packages/aft-bridge/src/migration.ts`, `packages/aft-bridge/src/path-aliases.ts`, `packages/aft-bridge/src/error-contract.ts`
 
 **`packages/aft-cli/`:**
 - Purpose: Provide a unified `npx @cortexkit/aft` CLI entry point for setup, doctor, and LSP management across all harnesses.
@@ -110,7 +110,7 @@ opencode-aft/
 **`packages/opencode-plugin/`:**
 - Purpose: Ship the OpenCode-facing package that resolves the binary and registers tools.
 - Contains: `src/` TypeScript sources, `src/tools/` tool definitions, `src/shared/` shared utilities, `src/hooks/` lifecycle hooks, `src/tui/` TUI plugin, `__tests__/` unit and e2e tests, package manifest
-- Key files: `packages/opencode-plugin/src/index.ts`, `packages/opencode-plugin/src/config.ts`, `packages/opencode-plugin/package.json`
+- Key files: `packages/opencode-plugin/src/index.ts`, `packages/opencode-plugin/src/config.ts`, `packages/opencode-plugin/src/tool-registration.ts`, `packages/opencode-plugin/package.json`
 
 **`packages/opencode-plugin/src/tools/`:**
 - Purpose: Group OpenCode tool definitions by capability area.
@@ -120,7 +120,7 @@ opencode-aft/
 **`packages/pi-plugin/`:**
 - Purpose: Ship the Pi coding-agent facing package that resolves the binary and registers tools.
 - Contains: `src/` TypeScript sources, `src/tools/` tool definitions, `src/commands/` Pi-specific commands, `src/dialogs/` Pi dialog handlers, `src/shared/` shared utilities, `__tests__/` unit and e2e tests
-- Key files: `packages/pi-plugin/src/index.ts`, `packages/pi-plugin/src/config.ts`, `packages/pi-plugin/src/types.ts`, `packages/pi-plugin/src/tools/hoisted.ts`
+- Key files: `packages/pi-plugin/src/index.ts`, `packages/pi-plugin/src/config.ts`, `packages/pi-plugin/src/tool-registration.ts`, `packages/pi-plugin/src/types.ts`, `packages/pi-plugin/src/tools/hoisted.ts`
 
 **`packages/pi-plugin/src/tools/`:**
 - Purpose: Group Pi tool definitions by capability area.
