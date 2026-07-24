@@ -1,6 +1,1 @@
-{
-  "id": "1",
-  "success": true,
-  "complete": true,
-  "text": "directory outline"
-}
+directory outline
