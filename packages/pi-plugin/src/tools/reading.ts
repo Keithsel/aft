@@ -381,7 +381,8 @@ export function registerReadingTools(
             throw new Error(response.text || response.message || "outline failed");
           }
           let text = typeof response.text === "string" ? response.text : "";
-          if (text.startsWith("{") && text.endsWith("}")) {
+          const trimmed = text.trim();
+          if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
             try {
               const parsed = JSON.parse(text);
               if (typeof parsed.text === "string") {
