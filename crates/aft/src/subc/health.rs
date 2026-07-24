@@ -344,6 +344,8 @@ fn memory_rollup_metrics(
         "roots_omitted": snapshot.roots_omitted,
         "roots_omitted_bytes": snapshot.roots_omitted_bytes,
         "rss_bytes": snapshot.process.rss_bytes,
+        // Headline number: excludes reclaimable pages RSS still counts.
+        "phys_footprint_bytes": snapshot.process.phys_footprint_bytes,
         "total_attributed_bytes": snapshot.process.total_attributed_bytes,
         "sqlite_bytes": snapshot.process.sqlite.memory_used_bytes,
     })

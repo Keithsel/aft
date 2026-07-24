@@ -225,6 +225,16 @@ impl AllocatorMemorySnapshot {
 pub struct ProcessMemorySnapshot {
     pub rss_status: &'static str,
     pub rss_bytes: Option<u64>,
+    /// Kernel physical footprint (macOS `phys_footprint`): dirty + compressed
+    /// + IOKit pages, excluding clean/reclaimable ones. This is the number
+    /// Activity Monitor's "Real Memory" and the OOM killer use. RSS counts
+    /// MADV_FREE pages the allocator has already surrendered (the kernel
+    /// reclaims them lazily), so RSS can read gigabytes above what the
+    /// process actually holds — observed 5.1 GB RSS over a 610 MB footprint.
+    /// None on non-macOS platforms (Linux RSS does not have this skew;
+    /// MADV_FREE'd pages leave Linux RSS on reclaim, not on advice).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phys_footprint_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rss_not_estimated: Option<&'static str>,
     pub sqlite: SqliteMemorySnapshot,
@@ -269,8 +279,13 @@ impl ProcessMemorySnapshot {
             .map(RootMemorySnapshot::not_estimated_subsystem_count)
             .sum();
         let rss_bytes = process_rss_bytes();
+        let phys_footprint_bytes = process_phys_footprint_bytes();
+        // Attribute against the footprint when available: it excludes
+        // already-surrendered pages, so the residual actually means
+        // "held memory we cannot explain" instead of allocator noise.
+        let unattributed_basis = phys_footprint_bytes.or(rss_bytes);
         let unattributed_bytes =
-            rss_bytes.map(|rss| signed_difference(rss, total_attributed_bytes));
+            unattributed_basis.map(|held| signed_difference(held, total_attributed_bytes));
         Self {
             rss_status: if rss_bytes.is_some() {
                 "estimated"
@@ -278,6 +293,7 @@ impl ProcessMemorySnapshot {
                 "not_estimated_on_this_platform"
             },
             rss_bytes,
+            phys_footprint_bytes,
             rss_not_estimated: rss_bytes
                 .is_none()
                 .then_some("platform_process_rss_unavailable"),
@@ -629,6 +645,29 @@ fn process_rss_bytes() -> Option<u64> {
         return None;
     }
     Some(unsafe { info.assume_init() }.pti_resident_size)
+}
+
+/// Kernel physical footprint via `proc_pid_rusage` (`ri_phys_footprint`).
+/// See `phys_footprint_bytes` for why this, not RSS, is the headline number.
+#[cfg(target_os = "macos")]
+fn process_phys_footprint_bytes() -> Option<u64> {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage_info_v4>::zeroed();
+    let rc = unsafe {
+        libc::proc_pid_rusage(
+            libc::getpid(),
+            libc::RUSAGE_INFO_V4,
+            usage.as_mut_ptr().cast(),
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    Some(unsafe { usage.assume_init() }.ri_phys_footprint)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn process_phys_footprint_bytes() -> Option<u64> {
+    None
 }
 
 #[cfg(target_os = "linux")]
