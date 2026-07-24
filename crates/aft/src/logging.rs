@@ -101,7 +101,9 @@ fn format_utc_timestamp() -> String {
 fn format_epoch_secs(secs: u64) -> String {
     let (days, rem) = (secs / 86_400, secs % 86_400);
     let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    // civil_from_days, shifted so the era starts on 0000-03-01.
+    // Howard Hinnant's civil_from_days: adding 719,468 shifts Unix epoch day 0
+    // into the algorithm's era, which begins on 0000-03-01 (putting the leap
+    // day last in each year simplifies the month/day arithmetic below).
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);

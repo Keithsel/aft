@@ -1598,7 +1598,9 @@ fn extra_honesty_note(data: &Value) -> Option<String> {
 fn format_outline(response: &Response, mode: OutlineMode) -> String {
     match mode {
         OutlineMode::Text => format_outline_text(&response.data),
-        OutlineMode::Files | OutlineMode::DirectoryJson => format_outline_files_text(&response.data),
+        OutlineMode::Files | OutlineMode::DirectoryJson => {
+            format_outline_files_text(&response.data)
+        }
     }
 }
 

@@ -4146,7 +4146,11 @@ async fn drive_routebind_priority_daemon(input: FakeDaemonInput) {
     });
 
     let flood_prefix = "routebind-priority-flood";
-    let flood_count = 512_u64;
+    // The flood must comfortably exceed ACK_AFTER_FINISH_PUSH_BOUND or the
+    // assertion goes vacuous (a broken priority path parks the ack behind the
+    // ENTIRE flood, so the bound only means something while it is well below
+    // the flood size).
+    let flood_count = 1024_u64;
     const TEST_WRITER_QUEUE_CAPACITY: u64 = 256;
     const TEST_RELIABLE_PUSH_DRAIN_BUDGET: u64 = 32;
     // The counting baseline is the CONFIGURE-FINISHED flag, not the release:
@@ -4157,9 +4161,13 @@ async fn drive_routebind_priority_daemon(input: FakeDaemonInput) {
     // Windows CI). Frames counted after the finished flag are loop-owned
     // work: completion channel handoff, pre-turn bind drain, and the FIFO
     // writer queue the ack rides behind — that is the priority mechanism
-    // under test, so a bound here is meaningful on any box.
+    // under test, so a bound here is meaningful on any box. Each loop turn
+    // drains at most one reliable batch, so the multiplier is the number of
+    // turns the completion handoff may straddle; Windows CI measured 7 turns
+    // under contention (ack behind 479 with a 6-turn bound), so allow 12 —
+    // still under half the flood, far from vacuous.
     const ACK_AFTER_FINISH_PUSH_BOUND: u64 =
-        TEST_WRITER_QUEUE_CAPACITY + 6 * TEST_RELIABLE_PUSH_DRAIN_BUDGET;
+        TEST_WRITER_QUEUE_CAPACITY + 12 * TEST_RELIABLE_PUSH_DRAIN_BUDGET;
     send_tool_call(
         &mut stream,
         1,
