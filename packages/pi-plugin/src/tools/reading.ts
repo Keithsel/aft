@@ -380,7 +380,18 @@ export function registerReadingTools(
           if (response.success === false) {
             throw new Error(response.text || response.message || "outline failed");
           }
-          return textResult(response.text, response);
+          let text = typeof response.text === "string" ? response.text : "";
+          if (text.startsWith("{") && text.endsWith("}")) {
+            try {
+              const parsed = JSON.parse(text);
+              if (typeof parsed.text === "string") {
+                text = parsed.text;
+              }
+            } catch {
+              // keep original text
+            }
+          }
+          return textResult(text, response);
         },
         renderCall(args, theme, context) {
           return renderOutlineCall(args, theme, context);
