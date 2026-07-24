@@ -1598,10 +1598,7 @@ fn extra_honesty_note(data: &Value) -> Option<String> {
 fn format_outline(response: &Response, mode: OutlineMode) -> String {
     match mode {
         OutlineMode::Text => format_outline_text(&response.data),
-        OutlineMode::Files => format_outline_files_text(&response.data),
-        OutlineMode::DirectoryJson => {
-            serde_json::to_string_pretty(response).unwrap_or_else(|_| "{}".to_string())
-        }
+        OutlineMode::Files | OutlineMode::DirectoryJson => format_outline_files_text(&response.data),
     }
 }
 
@@ -3034,5 +3031,27 @@ mod callgraph_format_tests {
 
         assert!(rendered.starts_with("1 path · 1 entry point"));
         assert!(!rendered.contains("at least"));
+    }
+}
+
+#[cfg(test)]
+mod outline_format_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn directory_outline_preserves_walk_truncation_footer() {
+        let response = Response::success(
+            "1",
+            json!({
+                "text": "src/\n  a.rs (rs)",
+                "complete": false,
+                "walk_truncated": true
+            }),
+        );
+
+        let formatted = format_outline(&response, OutlineMode::DirectoryJson);
+        assert!(formatted.contains("src/\n  a.rs (rs)"));
+        assert!(formatted.contains("⚠ Partial result: walk truncated at 200 files. Some files in this directory were not indexed."));
     }
 }

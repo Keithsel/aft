@@ -104,6 +104,31 @@ describe("reading tool adapters", () => {
     expect(result.content[0].text).toContain("... +2 more");
   });
 
+  test("aft_outline unwraps JSON envelope string (including whitespace-padded) in response.text", async () => {
+    const root = await tempProject();
+    await mkdir(join(root, "src"));
+    const envelope = JSON.stringify(
+      {
+        success: true,
+        text: "src/\n  index.ts (ts)\n",
+      },
+      null,
+      2,
+    );
+    const { api, tools } = makeMockApi();
+    const { bridge } = makeMockBridge(() => ({
+      success: true,
+      text: `\n${envelope}\n`,
+    }));
+    registerReadingTools(api, makePluginContext(bridge), { outline: true, zoom: false });
+
+    const result = (await executeTool(tools.get("aft_outline")!, { target: "src" }, {
+      cwd: root,
+    } as never)) as { content: Array<{ text: string }> };
+
+    expect(result.content[0].text).toBe("src/\n  index.ts (ts)\n");
+  });
+
   test("aft_zoom maps contextLines to one tool_call and preserves server partial text", async () => {
     const root = await tempProject();
     await writeFile(join(root, "src.ts"), "export function ok() {}\n");
