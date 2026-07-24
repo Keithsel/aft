@@ -326,6 +326,12 @@ jobs:
       - github-release
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The v0.49 release gate proves the surface-manifest source commit is
+          # an ancestor of the candidate; a shallow (depth-1) clone makes
+          # merge-base fail for every historical commit and the gate
+          # fail-closed on a healthy release.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
