@@ -329,9 +329,14 @@ mod tests {
             .get("properties")
             .and_then(|p| p.as_object());
         let read_props = read.expect("read schema properties");
+        // The manifest is generated from the OpenCode tool map, where the
+        // hoisted read/write/edit trio advertises `filePath` to satisfy the
+        // host's file-header display contract (the UI renders the recorded
+        // model input verbatim). `path` stays canonical everywhere else and is
+        // still accepted at runtime.
         assert!(
-            read_props.contains_key("path"),
-            "read schema must expose path"
+            read_props.contains_key("filePath"),
+            "read schema must expose the hoisted trio's filePath"
         );
 
         let status = &by_name["status"].schema;
