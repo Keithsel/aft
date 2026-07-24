@@ -187,6 +187,33 @@
       "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
     },
     {
+      "path": "crates/aft/src/subc/manifest.rs",
+      "location": "line 333, column 53",
+      "line": 333,
+      "column": 53,
+      "token": "filePath",
+      "class": "rust-compatibility",
+      "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
+    },
+    {
+      "path": "crates/aft/src/subc/manifest.rs",
+      "location": "line 338, column 38",
+      "line": 338,
+      "column": 38,
+      "token": "filePath",
+      "class": "rust-compatibility",
+      "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
+    },
+    {
+      "path": "crates/aft/src/subc/manifest.rs",
+      "location": "line 339, column 57",
+      "line": 339,
+      "column": 57,
+      "token": "filePath",
+      "class": "rust-compatibility",
+      "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
+    },
+    {
       "path": "crates/aft/src/subc_format.rs",
       "location": "line 81, column 80",
       "line": 81,
