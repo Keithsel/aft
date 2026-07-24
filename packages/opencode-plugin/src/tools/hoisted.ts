@@ -458,7 +458,9 @@ function createWriteTool(ctx: PluginContext, editToolName = "edit"): ToolDefinit
     description: getWriteDescription(ctx, editToolName),
     args: {
       // filePath, not path: host UI header contract — see createReadTool.
-      filePath: z.string().describe("Path to the file to write (absolute or relative to project root)"),
+      filePath: z
+        .string()
+        .describe("Path to the file to write (absolute or relative to project root)"),
       content: z.string().describe("The full content to write to the file"),
     },
     execute: async (args, context): Promise<ToolResult> => {
@@ -606,7 +608,9 @@ function createEditTool(ctx: PluginContext, writeToolName = "write"): ToolDefini
     description: getEditDescription(ctx, writeToolName),
     args: {
       // filePath, not path: host UI header contract — see createReadTool.
-      filePath: z.string().describe("Path to the file to edit (absolute or relative to project root)"),
+      filePath: z
+        .string()
+        .describe("Path to the file to edit (absolute or relative to project root)"),
       symbol: z.string().optional().describe("Named symbol to replace (function, class, type)"),
       content: z
         .string()
