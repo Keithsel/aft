@@ -1597,11 +1597,8 @@ fn extra_honesty_note(data: &Value) -> Option<String> {
 // Mirrors packages/opencode-plugin/src/tools/reading.ts aft_outline dispatch.
 fn format_outline(response: &Response, mode: OutlineMode) -> String {
     match mode {
-        OutlineMode::Text => format_outline_text(&response.data),
+        OutlineMode::Text | OutlineMode::DirectoryJson => format_outline_text(&response.data),
         OutlineMode::Files => format_outline_files_text(&response.data),
-        OutlineMode::DirectoryJson => {
-            serde_json::to_string_pretty(response).unwrap_or_else(|_| "{}".to_string())
-        }
     }
 }
 
