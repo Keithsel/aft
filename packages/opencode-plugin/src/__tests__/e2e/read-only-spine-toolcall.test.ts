@@ -174,25 +174,20 @@ export function runReadOnlySpineToolcallSuite(
       expect(output).toContain("ToolCallOutlineService");
     });
 
-    test("aft_outline returns structured directory JSON through tool_call", async () => {
+    test("aft_outline returns plain-text directory outline through tool_call", async () => {
       const h = await harness();
       const tools = readingTools(createPluginContext(h));
 
       const output = await tools.aft_outline.execute({ target: "src" }, createToolContext(h));
-      const parsed = JSON.parse(output) as {
-        success?: boolean;
-        complete?: boolean;
-        text?: string;
-        skipped_files?: unknown[];
-      };
 
-      expect(parsed.success).toBe(true);
-      expect(parsed.complete).toBe(true);
-      expect(parsed.text).toContain("src/");
-      expect(parsed.text).toContain("hit.ts");
-      expect(parsed.text).toContain("toolCallOutlineFunction");
-      expect(parsed.text).not.toContain("hit.test.ts");
-      expect(parsed.skipped_files).toEqual([]);
+      // Directory outlines render as plain text like every other outline
+      // mode; a complete walk carries no partial-result footer.
+      expect(() => JSON.parse(output)).toThrow();
+      expect(output).toContain("src/");
+      expect(output).toContain("hit.ts");
+      expect(output).toContain("toolCallOutlineFunction");
+      expect(output).not.toContain("hit.test.ts");
+      expect(output).not.toContain("⚠ Partial result");
     });
 
     test("aft_outline files:true returns the server-rendered files tree through tool_call", async () => {
@@ -230,20 +225,19 @@ export function runReadOnlySpineToolcallSuite(
       const h = await harness();
       const tools = readingTools(createPluginContext(h));
 
-      const withoutTests = JSON.parse(
-        await tools.aft_outline.execute({ target: "src" }, createToolContext(h)),
-      ) as { text?: string };
-      const withTests = JSON.parse(
-        await tools.aft_outline.execute(
-          { target: "src", includeTests: true },
-          createToolContext(h),
-        ),
-      ) as { text?: string };
+      const withoutTests = await tools.aft_outline.execute(
+        { target: "src" },
+        createToolContext(h),
+      );
+      const withTests = await tools.aft_outline.execute(
+        { target: "src", includeTests: true },
+        createToolContext(h),
+      );
 
-      expect(withoutTests.text).not.toContain("hit.test.ts");
-      expect(withoutTests.text).not.toContain("toolCallOutlineTestOnly");
-      expect(withTests.text).toContain("hit.test.ts");
-      expect(withTests.text).toContain("toolCallOutlineTestOnly");
+      expect(withoutTests).not.toContain("hit.test.ts");
+      expect(withoutTests).not.toContain("toolCallOutlineTestOnly");
+      expect(withTests).toContain("hit.test.ts");
+      expect(withTests).toContain("toolCallOutlineTestOnly");
     });
   });
 }

@@ -122,16 +122,14 @@ export function runHonestReportingSuite(
       const output = toolResultText(
         await tools.aft_outline.execute({ target: "outline-small" }, sdkCtx),
       );
-      const response = JSON.parse(output) as Record<string, unknown>;
 
-      expect(response.complete).toBe(true);
-      expect(response.walk_truncated).toBe(false);
-      const skipped = response.skipped_files as Array<{ file: string; reason: string }>;
-      expect(skipped).toHaveLength(1);
-      expect(skipped[0].file).toMatch(/outline-small[/\\]bad\.ts$/);
-      expect(skipped[0].reason).toBe("parse_error");
-      expect(String(response.text)).toContain("good.ts");
-      expect(String(response.text)).toContain("good");
+      // Directory outlines are plain text; honesty data arrives as footers.
+      expect(() => JSON.parse(output)).toThrow();
+      expect(output).toContain("good.ts");
+      expect(output).toContain("good");
+      expect(output).not.toContain("⚠ Partial result");
+      expect(output).toContain("Skipped 1 file(s):");
+      expect(output).toMatch(/bad\.ts — parse_error/);
     });
 
     test("aft_outline directory mode returns complete false when Rust walk truncates", async () => {
@@ -148,12 +146,11 @@ export function runHonestReportingSuite(
       const output = toolResultText(
         await tools.aft_outline.execute({ target: "outline-large" }, sdkCtx),
       );
-      const response = JSON.parse(output) as Record<string, unknown>;
 
-      expect(response.complete).toBe(false);
-      expect(response.walk_truncated).toBe(true);
-      expect(Array.isArray(response.skipped_files)).toBe(true);
-      expect(String(response.text)).toContain("file-000.ts");
+      // Truncation is disclosed in the plain-text partial-result footer.
+      expect(() => JSON.parse(output)).toThrow();
+      expect(output).toContain("file-000.ts");
+      expect(output).toContain("⚠ Partial result: walk truncated at 200 files.");
     });
 
     test("aft_outline single file target keeps text output behavior", async () => {
