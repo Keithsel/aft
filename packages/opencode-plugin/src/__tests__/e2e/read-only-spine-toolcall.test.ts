@@ -225,10 +225,7 @@ export function runReadOnlySpineToolcallSuite(
       const h = await harness();
       const tools = readingTools(createPluginContext(h));
 
-      const withoutTests = await tools.aft_outline.execute(
-        { target: "src" },
-        createToolContext(h),
-      );
+      const withoutTests = await tools.aft_outline.execute({ target: "src" }, createToolContext(h));
       const withTests = await tools.aft_outline.execute(
         { target: "src", includeTests: true },
         createToolContext(h),
