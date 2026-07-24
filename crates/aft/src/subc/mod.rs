@@ -2181,6 +2181,10 @@ where
     // the sleep_until arm below only exists to wake an otherwise-idle loop.
     let mut next_drain_at = tokio::time::Instant::now() + DRAIN_TICK_PERIOD;
     let mut next_maintenance_at = next_drain_at;
+    // Rate-limit stamp for opportunistic macOS allocator slack relief (checked
+    // on the maintenance tick; policy shared with standalone via memory.rs).
+    #[cfg(target_os = "macos")]
+    let mut last_slack_relief: Option<std::time::Instant> = None;
     let (maintenance_tx, mut maintenance_rx) = mpsc::channel::<MaintenanceCompletion>(256);
     let (bash_deferred_tx, mut bash_deferred_rx) =
         mpsc::channel::<bash::BashDeferredCompletion>(256);
@@ -2725,6 +2729,22 @@ where
                     &maintenance_tx,
                     &dispatch_path_metrics,
                 );
+                // Opportunistic allocator relief, independent of the idle
+                // sweep: the sweep's whole-process idle gate never opens while
+                // any session stays active, which let freed warm-up arenas sit
+                // resident for the process lifetime (5.1 GB RSS over ~600 MB
+                // live). Slack threshold + spacing live in memory.rs; the pass
+                // itself runs on a detached thread.
+                #[cfg(target_os = "macos")]
+                {
+                    let now_std = std::time::Instant::now();
+                    if crate::memory::spawn_allocator_slack_relief_if_due(
+                        last_slack_relief,
+                        now_std,
+                    ) {
+                        last_slack_relief = Some(now_std);
+                    }
+                }
                 next_maintenance_at = tokio::time::Instant::now() + DRAIN_TICK_PERIOD;
             }
         }

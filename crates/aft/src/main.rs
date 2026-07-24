@@ -167,6 +167,11 @@ fn main() {
     const DRAIN_INTERVAL: Duration = Duration::from_millis(250);
     const PENDING_POLL_INTERVAL: Duration = Duration::from_millis(100);
     let mut pending = PendingResponses::default();
+    // Opportunistic macOS allocator relief: rate-limit stamp for the slack
+    // check that runs on the periodic drain wake (threshold + spacing live in
+    // memory.rs so subc and standalone share one policy).
+    #[cfg(target_os = "macos")]
+    let mut last_slack_relief: Option<std::time::Instant> = None;
     let (line_tx, line_rx) = mpsc::channel::<io::Result<String>>();
     let mut graceful_stdin_shutdown = false;
     thread::spawn(move || {
@@ -198,6 +203,13 @@ fn main() {
                 if let Err(e) = drain_runtime_events_and_write_pending(&registry, &mut pending) {
                     aft::slog_error!("stdout write error: {}", e);
                     break;
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let now = std::time::Instant::now();
+                    if aft::memory::spawn_allocator_slack_relief_if_due(last_slack_relief, now) {
+                        last_slack_relief = Some(now);
+                    }
                 }
                 if shutdown_requested.load(Ordering::SeqCst) {
                     break;

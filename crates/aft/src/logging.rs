@@ -71,9 +71,48 @@ pub fn init() {
             } else {
                 "[aft]"
             };
-            writeln!(buf, "{} {}", prefix, record.args())
+            // Wall-clock stamp so post-hoc log forensics can correlate
+            // lines with external events (health probes, module bounces).
+            // Seconds precision is enough; chrono is avoided on purpose —
+            // this hand-rolls UTC from the epoch to keep deps flat.
+            writeln!(
+                buf,
+                "{} {} {}",
+                format_utc_timestamp(),
+                prefix,
+                record.args()
+            )
         })
         .init();
+}
+
+/// Render `now` as `YYYY-MM-DDTHH:MM:SSZ` without a date-time dependency.
+///
+/// Civil-date math uses the days-from-epoch algorithm (Howard Hinnant's
+/// `civil_from_days`); u64 seconds keep it valid far past 2100.
+fn format_utc_timestamp() -> String {
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format_epoch_secs(secs)
+}
+
+fn format_epoch_secs(secs: u64) -> String {
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // civil_from_days, shifted so the era starts on 0000-03-01.
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
 }
 
 fn prepare_file_sink(logs_dir: &Path, file_path: &Path) -> io::Result<RotatingFile> {
@@ -773,6 +812,17 @@ mod tests {
 
     fn line(value: &str) -> Vec<Vec<u8>> {
         vec![format!("{value}\n").into_bytes()]
+    }
+
+    #[test]
+    fn epoch_timestamp_renders_known_dates() {
+        // Epoch start, a modern date, a post-2038 date (u64 range), and the
+        // 2100 non-leap century boundary that naive leap logic gets wrong.
+        assert_eq!(format_epoch_secs(0), "1970-01-01T00:00:00Z");
+        assert_eq!(format_epoch_secs(1_704_067_200), "2024-01-01T00:00:00Z");
+        assert_eq!(format_epoch_secs(1_709_251_199), "2024-02-29T23:59:59Z");
+        assert_eq!(format_epoch_secs(4_102_444_800), "2100-01-01T00:00:00Z");
+        assert_eq!(format_epoch_secs(4_107_542_399), "2100-02-28T23:59:59Z");
     }
 
     #[test]

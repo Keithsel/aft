@@ -525,6 +525,75 @@ unsafe extern "C" {
     fn malloc_zone_pressure_relief(zone: *mut libc::malloc_zone_t, goal: usize) -> usize;
 }
 
+/// Allocator slack (mapped-but-unused arena bytes) above which opportunistic
+/// pressure relief is worth the zone-lock contention it briefly causes.
+pub const ALLOCATOR_SLACK_RELIEF_THRESHOLD_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Minimum spacing between opportunistic relief passes so a workload that
+/// legitimately cycles through large allocations does not thrash the allocator.
+pub const ALLOCATOR_SLACK_RELIEF_MIN_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(300);
+
+/// Decide whether an opportunistic allocator relief pass is due.
+///
+/// Pure so the policy is unit-testable: fires only when the allocator reports
+/// at least the threshold of retained slack AND the previous pass is old
+/// enough. Callers own actually measuring the snapshot and running the pass.
+pub fn allocator_slack_relief_due(
+    retained_slack_bytes: Option<u64>,
+    last_relief: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> bool {
+    let Some(slack) = retained_slack_bytes else {
+        return false;
+    };
+    if slack < ALLOCATOR_SLACK_RELIEF_THRESHOLD_BYTES {
+        return false;
+    }
+    match last_relief {
+        None => true,
+        Some(at) => now.duration_since(at) >= ALLOCATOR_SLACK_RELIEF_MIN_INTERVAL,
+    }
+}
+
+/// Opportunistically return unused allocator pages when slack is large, even
+/// while sessions are active. The whole-process idle sweep only fires when
+/// every root has been quiet, so one long-lived chatty session used to block
+/// reclamation for the process lifetime (observed: 5.1 GB RSS over ~600 MB of
+/// live data). Runs the relief on a detached thread because
+/// `malloc_zone_pressure_relief` walks every zone under its lock and must not
+/// stall the dispatch loop or health probes.
+///
+/// Returns true when a pass was spawned (caller records the timestamp).
+#[cfg(target_os = "macos")]
+pub fn spawn_allocator_slack_relief_if_due(
+    last_relief: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> bool {
+    let slack = allocator_memory_snapshot().retained_slack_bytes;
+    if !allocator_slack_relief_due(slack, last_relief, now) {
+        return false;
+    }
+    std::thread::Builder::new()
+        .name("aft-mem-relief".to_string())
+        .spawn(|| {
+            let relief = relieve_allocator_pressure();
+            log::info!(
+                "allocator slack relief: released={} rss {} -> {}",
+                relief.bytes_released,
+                relief
+                    .rss_before_bytes
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "?".to_string()),
+                relief
+                    .rss_after_bytes
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "?".to_string()),
+            );
+        })
+        .is_ok()
+}
+
 /// Ask the macOS allocator to return unused pages after a process-wide idle gate.
 /// Callers own that gate because allocator pressure relief can add latency.
 #[cfg(target_os = "macos")]
@@ -585,6 +654,29 @@ mod tests {
     #[test]
     fn process_snapshot_preserves_negative_residuals() {
         assert_eq!(signed_difference(5, 8), -3);
+    }
+
+    #[test]
+    fn slack_relief_fires_on_large_slack_and_respects_spacing() {
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
+        let big = Some(ALLOCATOR_SLACK_RELIEF_THRESHOLD_BYTES);
+        // Unknown slack (allocator stats unavailable) never fires.
+        assert!(!allocator_slack_relief_due(None, None, now));
+        // Below threshold never fires.
+        assert!(!allocator_slack_relief_due(
+            Some(ALLOCATOR_SLACK_RELIEF_THRESHOLD_BYTES - 1),
+            None,
+            now
+        ));
+        // At threshold with no prior pass fires.
+        assert!(allocator_slack_relief_due(big, None, now));
+        // A recent pass suppresses the next one...
+        let recent = now - Duration::from_secs(10);
+        assert!(!allocator_slack_relief_due(big, Some(recent), now));
+        // ...until the minimum spacing has elapsed.
+        let stale = now - ALLOCATOR_SLACK_RELIEF_MIN_INTERVAL;
+        assert!(allocator_slack_relief_due(big, Some(stale), now));
     }
 
     #[test]
