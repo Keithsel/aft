@@ -55,7 +55,13 @@ export function readBinaryVersion(binaryPath: string): string | null {
     const result = spawnSync(binaryPath, ["--version"], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
+      // macOS assesses an executable once per inode, and a just-downloaded
+      // binary is always a new one. That first exec has been measured at
+      // seconds — occasionally far worse under memory pressure — so a
+      // five-second cap would report a perfectly good binary as unreadable
+      // and trigger a needless re-download. Later execs of the same inode
+      // return in milliseconds, so this budget is only ever paid once.
+      timeout: 60_000,
     });
     const stdoutVersion = result.stdout?.trim();
     const stderrVersion = result.stderr?.trim();
