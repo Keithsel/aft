@@ -913,6 +913,10 @@ pub trait CallGraphRead {
         &self,
         targets: &[(String, String)],
     ) -> Result<HashMap<(String, String), usize>>;
+    fn outgoing_calls_for_symbols(
+        &self,
+        sources: &[(String, String)],
+    ) -> Result<HashMap<(String, String), Vec<StoreCallSite>>>;
     fn callers_of(&self, file_rel: &Path, symbol: &str, depth: usize)
         -> Result<StoreCallersResult>;
     fn impact_of(&self, file_rel: &Path, symbol: &str, depth: usize) -> Result<StoreImpactResult>;
@@ -2736,6 +2740,20 @@ impl CallGraphStore {
         outgoing_calls_for_node(&conn, node)
     }
 
+    /// Fetch outgoing calls for a BFS frontier without reopening the store per symbol or edge.
+    pub fn outgoing_calls_for_symbols(
+        &self,
+        sources: &[(String, String)],
+    ) -> Result<HashMap<(String, String), Vec<StoreCallSite>>> {
+        if sources.is_empty() {
+            return Ok(HashMap::new());
+        }
+        self.refresh_read_marker()?;
+        let conn = self.conn.lock().expect("callgraph store mutex poisoned");
+        self.ensure_ready(&conn)?;
+        outgoing_calls_for_symbol_tuples(&conn, sources)
+    }
+
     /// Return resolved direct self-call refs suppressed from the general edge table.
     pub fn resolved_self_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         self.refresh_read_marker()?;
@@ -3080,6 +3098,13 @@ impl ReadonlyCallGraphStore {
         self.inner.outgoing_calls_of(node)
     }
 
+    pub fn outgoing_calls_for_symbols(
+        &self,
+        sources: &[(String, String)],
+    ) -> Result<HashMap<(String, String), Vec<StoreCallSite>>> {
+        self.inner.outgoing_calls_for_symbols(sources)
+    }
+
     pub fn resolved_self_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         self.inner.resolved_self_calls_of(node)
     }
@@ -3177,6 +3202,12 @@ impl CallGraphRead for CallGraphStore {
     fn outgoing_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         CallGraphStore::outgoing_calls_of(self, node)
     }
+    fn outgoing_calls_for_symbols(
+        &self,
+        sources: &[(String, String)],
+    ) -> Result<HashMap<(String, String), Vec<StoreCallSite>>> {
+        CallGraphStore::outgoing_calls_for_symbols(self, sources)
+    }
     fn resolved_self_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         CallGraphStore::resolved_self_calls_of(self, node)
     }
@@ -3265,6 +3296,12 @@ impl<T: CallGraphRead + ?Sized> CallGraphRead for Arc<T> {
     fn outgoing_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         (**self).outgoing_calls_of(node)
     }
+    fn outgoing_calls_for_symbols(
+        &self,
+        sources: &[(String, String)],
+    ) -> Result<HashMap<(String, String), Vec<StoreCallSite>>> {
+        (**self).outgoing_calls_for_symbols(sources)
+    }
     fn resolved_self_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         (**self).resolved_self_calls_of(node)
     }
@@ -3352,6 +3389,12 @@ impl CallGraphRead for ReadonlyCallGraphStore {
     }
     fn outgoing_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         self.outgoing_calls_of(node)
+    }
+    fn outgoing_calls_for_symbols(
+        &self,
+        sources: &[(String, String)],
+    ) -> Result<HashMap<(String, String), Vec<StoreCallSite>>> {
+        self.outgoing_calls_for_symbols(sources)
     }
     fn resolved_self_calls_of(&self, node: &StoreNode) -> Result<Vec<StoreCallSite>> {
         self.resolved_self_calls_of(node)
@@ -3662,6 +3705,163 @@ fn direct_callers_for_tuple(
     })?;
     rows.collect::<std::result::Result<Vec<_>, _>>()
         .map_err(Into::into)
+}
+
+// Each symbol uses two parameters; 499 stays below SQLite's legacy 999-variable limit.
+const OUTGOING_SYMBOL_BATCH_SIZE: usize = 499;
+// Outgoing-edge batches bind one source node per parameter.
+const OUTGOING_NODE_BATCH_SIZE: usize = 999;
+
+fn outgoing_calls_for_symbol_tuples(
+    conn: &Connection,
+    sources: &[(String, String)],
+) -> Result<HashMap<(String, String), Vec<StoreCallSite>>> {
+    let unique_sources = sources.iter().cloned().collect::<BTreeSet<_>>();
+    let unique_sources = unique_sources.into_iter().collect::<Vec<_>>();
+    let source_nodes_by_symbol = nodes_for_symbol_tuples(conn, &unique_sources)?;
+    let source_nodes = unique_sources
+        .iter()
+        .flat_map(|source| source_nodes_by_symbol.get(source).into_iter().flatten())
+        .cloned()
+        .collect::<Vec<_>>();
+    let source_nodes_by_id = source_nodes
+        .iter()
+        .cloned()
+        .map(|node| (node.node_id.clone(), node))
+        .collect::<HashMap<_, _>>();
+    let mut calls_by_node: HashMap<String, Vec<StoreCallSite>> = HashMap::new();
+
+    for chunk in source_nodes.chunks(OUTGOING_NODE_BATCH_SIZE) {
+        let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT e.source_node,
+                    e.target_file, e.target_symbol, e.line,
+                    r.byte_start, r.byte_end, r.status, e.provenance,
+                    CASE WHEN tgt_file.lang IS NULL THEN NULL ELSE tgt.id END,
+                    tgt.file_path, tgt.scoped_name, tgt.name, tgt.kind, tgt.start_line,
+                    tgt.end_line, tgt.signature, tgt.exported, tgt.is_callgraph_entry_point,
+                    tgt_file.lang
+             FROM edges e
+             JOIN refs r ON r.ref_id = e.ref_id
+             LEFT JOIN nodes tgt ON tgt.id = e.target_node
+             LEFT JOIN files tgt_file ON tgt_file.path = tgt.file_path
+             WHERE e.kind = 'call' AND e.source_node IN ({placeholders})
+             ORDER BY e.source_node, r.byte_start, r.line, r.ref_id"
+        );
+        let bindings = chunk.iter().map(|node| node.node_id.as_str());
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(bindings), |row| {
+            let source_node_id = row.get::<_, String>(0)?;
+            let caller = source_nodes_by_id
+                .get(&source_node_id)
+                .expect("batched outgoing row belongs to a requested source node")
+                .clone();
+            let target = optional_store_node_from_row_at(row, 8)?;
+            Ok((
+                source_node_id,
+                StoreCallSite {
+                    caller,
+                    target_file: row.get(1)?,
+                    target_symbol: row.get(2)?,
+                    target,
+                    line: row.get::<_, i64>(3)?.max(0) as u32,
+                    byte_start: row.get::<_, i64>(4)?.max(0) as usize,
+                    byte_end: row.get::<_, i64>(5)?.max(0) as usize,
+                    resolved: row.get::<_, String>(6)? == "resolved",
+                    provenance: row.get(7)?,
+                },
+            ))
+        })?;
+        for row in rows {
+            let (source_node_id, call) = row?;
+            calls_by_node.entry(source_node_id).or_default().push(call);
+        }
+    }
+
+    let mut calls_by_source = HashMap::new();
+    for source in &unique_sources {
+        let mut calls = Vec::new();
+        if let Some(nodes) = source_nodes_by_symbol.get(source) {
+            for node in nodes {
+                if let Some(node_calls) = calls_by_node.remove(&node.node_id) {
+                    calls.extend(node_calls);
+                }
+            }
+        }
+        calls_by_source.insert(source.clone(), calls);
+    }
+
+    // Resolve each logical target once for the whole frontier. Keeping this separate
+    // preserves positional-symbol representatives without a correlated lookup per edge.
+    let target_tuples = calls_by_source
+        .values()
+        .flatten()
+        .map(|call| (call.target_file.clone(), call.target_symbol.clone()))
+        .collect::<Vec<_>>();
+    let target_nodes = nodes_for_symbol_tuples(conn, &target_tuples)?;
+    for calls in calls_by_source.values_mut() {
+        for call in calls {
+            if let Some(target) = target_nodes
+                .get(&(call.target_file.clone(), call.target_symbol.clone()))
+                .and_then(|nodes| nodes.first())
+            {
+                call.target = Some(target.clone());
+            }
+        }
+    }
+
+    Ok(calls_by_source)
+}
+
+fn nodes_for_symbol_tuples(
+    conn: &Connection,
+    symbols: &[(String, String)],
+) -> Result<HashMap<(String, String), Vec<StoreNode>>> {
+    let unique_symbols = symbols.iter().cloned().collect::<BTreeSet<_>>();
+    let mut nodes_by_symbol = unique_symbols
+        .iter()
+        .cloned()
+        .map(|symbol| (symbol, Vec::new()))
+        .collect::<HashMap<_, _>>();
+    let unique_symbols = unique_symbols.into_iter().collect::<Vec<_>>();
+
+    for chunk in unique_symbols.chunks(OUTGOING_SYMBOL_BATCH_SIZE) {
+        let requested_values = (0..chunk.len())
+            .map(|_| "(?, ?)")
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "WITH requested(file, symbol) AS (VALUES {requested_values})
+             SELECT requested.file, requested.symbol,
+                    node.id, node.file_path, node.scoped_name, node.name, node.kind,
+                    node.start_line, node.end_line, node.signature, node.exported,
+                    node.is_callgraph_entry_point, node_file.lang
+             FROM requested
+             JOIN nodes node INDEXED BY idx_nodes_file
+               ON node.file_path = requested.file
+              AND node.scoped_name = requested.symbol
+             JOIN files node_file ON node_file.path = node.file_path
+             ORDER BY requested.file, requested.symbol,
+                      node.scoped_name, node.start_line, node.end_line,
+                      node.start_col, node.range_ordinal"
+        );
+        let bindings = chunk
+            .iter()
+            .flat_map(|(file, symbol)| [file.as_str(), symbol.as_str()]);
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(bindings), |row| {
+            Ok((
+                (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                store_node_from_row_at(row, 2)?,
+            ))
+        })?;
+        for row in rows {
+            let (symbol, node) = row?;
+            nodes_by_symbol.entry(symbol).or_default().push(node);
+        }
+    }
+
+    Ok(nodes_by_symbol)
 }
 
 fn outgoing_calls_for_node(conn: &Connection, node: &StoreNode) -> Result<Vec<StoreCallSite>> {

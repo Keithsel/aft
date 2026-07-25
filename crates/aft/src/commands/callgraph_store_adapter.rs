@@ -903,41 +903,59 @@ pub fn trace_to_symbol_result(
     ));
     let mut max_depth_exhausted = false;
 
-    while let Some((current_file, current_symbol, path, depth)) = queue.pop_front() {
-        let callees = forward_resolved_callees(store, &current_file, &current_symbol)?;
+    while !queue.is_empty() {
+        let frontier_len = queue.len();
+        let frontier = queue
+            .iter()
+            .take(frontier_len)
+            .map(|(file, symbol, _, _)| (file.clone(), symbol.clone()))
+            .collect::<Vec<_>>();
+        let mut calls_by_symbol = store.outgoing_calls_for_symbols(&frontier)?;
 
-        if depth >= effective_max {
-            if callees
-                .iter()
-                .any(|(node, _)| !visited.contains(&(node.file.clone(), node.symbol.clone())))
-            {
-                max_depth_exhausted = true;
-            }
-            continue;
-        }
+        // Process the fetched frontier in the original queue order. Later-discovered
+        // edges must not overtake shorter paths found by breadth-first traversal.
+        for _ in 0..frontier_len {
+            let Some((current_file, current_symbol, path, depth)) = queue.pop_front() else {
+                break;
+            };
+            let calls = calls_by_symbol
+                .remove(&(current_file, current_symbol))
+                .unwrap_or_default();
+            let callees = forward_resolved_callees(calls);
 
-        for (callee, edge) in callees {
-            if !include_tests && is_test_file(&callee.file) {
+            if depth >= effective_max {
+                if callees
+                    .iter()
+                    .any(|(node, _)| !visited.contains(&(node.file.clone(), node.symbol.clone())))
+                {
+                    max_depth_exhausted = true;
+                }
                 continue;
             }
-            if !visited.insert((callee.file.clone(), callee.symbol.clone())) {
-                continue;
+
+            for (callee, edge) in callees {
+                if !include_tests && is_test_file(&callee.file) {
+                    continue;
+                }
+                if !visited.insert((callee.file.clone(), callee.symbol.clone())) {
+                    continue;
+                }
+                let mut next_path = path.clone();
+                next_path.push(trace_to_symbol_hop_with_edge(&callee, edge));
+                if trace_to_symbol_matches_target(
+                    &callee.file,
+                    &callee.symbol,
+                    to_symbol,
+                    target_file.as_deref(),
+                ) {
+                    return Ok(StoreTraceToSymbolResult {
+                        path: Some(next_path),
+                        complete: true,
+                        reason: None,
+                    });
+                }
+                queue.push_back((callee.file, callee.symbol, next_path, depth + 1));
             }
-            let mut next_path = path.clone();
-            next_path.push(trace_to_symbol_hop_with_edge(&callee, edge));
-            if trace_to_symbol_matches_target(
-                &callee.file,
-                &callee.symbol,
-                to_symbol,
-                target_file.as_deref(),
-            ) {
-                return Ok(StoreTraceToSymbolResult {
-                    path: Some(next_path),
-                    complete: true,
-                    reason: None,
-                });
-            }
-            queue.push_back((callee.file, callee.symbol, next_path, depth + 1));
         }
     }
 
@@ -2030,38 +2048,21 @@ fn forward_calls_for_nodes(
     Ok(calls)
 }
 
-fn forward_resolved_callees(
-    store: &impl CallGraphRead,
-    file: &str,
-    symbol: &str,
-) -> StoreAdapterResult<Vec<(StoreNode, EdgeMarker)>> {
-    let Some(current) = resolve_exact_symbol(store, file, symbol, None)? else {
-        return Ok(Vec::new());
-    };
-    let mut calls = Vec::new();
-    for node in &current.nodes {
-        calls.extend(store.outgoing_calls_of(node)?);
-    }
-    calls = dedup_call_sites(calls);
+fn forward_resolved_callees(calls: Vec<StoreCallSite>) -> Vec<(StoreNode, EdgeMarker)> {
+    let mut calls = dedup_call_sites(calls);
     calls.sort_by(|left, right| {
         left.byte_start
             .cmp(&right.byte_start)
             .then(left.line.cmp(&right.line))
     });
 
-    let mut callees = Vec::new();
-    for site in calls {
-        let resolved = resolve_exact_symbol(
-            store,
-            &site.target_file,
-            &site.target_symbol,
-            site.target.clone(),
-        )?;
-        if let Some(target) = resolved {
-            callees.push((target.representative, edge_marker(&site)));
-        }
-    }
-    Ok(callees)
+    calls
+        .into_iter()
+        .filter_map(|site| {
+            let edge = edge_marker(&site);
+            site.target.map(|target| (target, edge))
+        })
+        .collect()
 }
 
 fn dedup_call_sites(sites: Vec<StoreCallSite>) -> Vec<StoreCallSite> {
@@ -2173,6 +2174,7 @@ mod trace_to_tests {
         outgoing: HashMap<(String, String), Vec<StoreCallSite>>,
         caller_queries: RefCell<HashMap<(String, String), usize>>,
         forward_query_count: RefCell<usize>,
+        frontier_query_count: RefCell<usize>,
         caller_count_queries: RefCell<usize>,
         caller_count_targets: RefCell<usize>,
     }
@@ -2187,6 +2189,7 @@ mod trace_to_tests {
                 outgoing: HashMap::new(),
                 caller_queries: RefCell::new(HashMap::new()),
                 forward_query_count: RefCell::new(0),
+                frontier_query_count: RefCell::new(0),
                 caller_count_queries: RefCell::new(0),
                 caller_count_targets: RefCell::new(0),
             }
@@ -2241,6 +2244,10 @@ mod trace_to_tests {
 
         fn reset_forward_queries(&self) {
             *self.forward_query_count.borrow_mut() = 0;
+        }
+
+        fn total_frontier_queries(&self) -> usize {
+            *self.frontier_query_count.borrow()
         }
 
         fn total_caller_queries(&self) -> usize {
@@ -2375,6 +2382,21 @@ mod trace_to_tests {
                 .get(&(node.file.clone(), node.symbol.clone()))
                 .cloned()
                 .unwrap_or_default())
+        }
+
+        fn outgoing_calls_for_symbols(
+            &self,
+            sources: &[(String, String)],
+        ) -> CallGraphResult<HashMap<(String, String), Vec<StoreCallSite>>> {
+            *self.frontier_query_count.borrow_mut() += 1;
+            Ok(sources
+                .iter()
+                .cloned()
+                .map(|source| {
+                    let calls = self.outgoing.get(&source).cloned().unwrap_or_default();
+                    (source, calls)
+                })
+                .collect())
         }
 
         fn resolved_self_calls_of(&self, _node: &StoreNode) -> CallGraphResult<Vec<StoreCallSite>> {
@@ -2552,6 +2574,45 @@ mod trace_to_tests {
             serde_json::to_string(&impact).expect("serialize impact result"),
             r#"{"symbol":"target","file":"target.ts","parameters":[],"total_affected":21,"affected_files":1,"callers":[{"caller_symbol":"hubCaller","caller_file":"hubCaller.ts","line":1,"is_entry_point":false,"parameters":[]}],"hub_summary":{"message":"Next: 21 affected callers — showing 1; narrow with scope","total":21,"hidden_tests":0,"shown":1,"threshold":20,"limit":15},"depth_limited":true,"truncated":42}"#
         );
+    }
+
+    #[test]
+    fn trace_to_symbol_batches_frontiers_without_changing_shortest_path() {
+        let mut store = CountingStore::new();
+        let origin = node("origin", false);
+        let slow = node("slow", false);
+        let slow_middle = node("slowMiddle", false);
+        let fast = node("fast", false);
+        let target = node("target", false);
+        for fixture_node in [&origin, &slow, &slow_middle, &fast, &target] {
+            store.add_node(fixture_node.clone());
+        }
+        store.add_outgoing(&origin, &slow);
+        store.add_outgoing(&origin, &fast);
+        store.add_outgoing(&slow, &slow_middle);
+        store.add_outgoing(&slow_middle, &target);
+        store.add_outgoing(&fast, &target);
+
+        let result = trace_to_symbol_result(
+            &store,
+            Path::new(&origin.file),
+            &origin.symbol,
+            &target.symbol,
+            None,
+            10,
+            true,
+        )
+        .expect("trace-to-symbol result");
+        let symbols = result
+            .path
+            .expect("shortest path")
+            .into_iter()
+            .map(|hop| hop.symbol)
+            .collect::<Vec<_>>();
+
+        assert_eq!(symbols, vec!["origin", "fast", "target"]);
+        assert_eq!(store.total_frontier_queries(), 2);
+        assert_eq!(store.total_forward_queries(), 0);
     }
 
     #[test]

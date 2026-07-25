@@ -43,6 +43,26 @@ fn trace_to_symbol(
     aft.send(&req.to_string())
 }
 
+fn trace_to_symbol_with_include_tests(
+    aft: &mut AftProcess,
+    file: &Path,
+    symbol: &str,
+    to_symbol: &str,
+    include_tests: bool,
+) -> Value {
+    aft.send(
+        &json!({
+            "id": "trace",
+            "command": "trace_to_symbol",
+            "file": file.to_string_lossy(),
+            "symbol": symbol,
+            "toSymbol": to_symbol,
+            "include_tests": include_tests,
+        })
+        .to_string(),
+    )
+}
+
 fn path_symbols(resp: &Value) -> Vec<String> {
     resp["path"]
         .as_array()
@@ -349,6 +369,79 @@ fn trace_to_symbol_cycle_does_not_loop_and_finds_shortest_path() {
     assert_eq!(resp["success"], true, "trace should succeed: {resp:?}");
     assert_eq!(resp["complete"], true);
     assert_eq!(path_symbols(&resp), vec!["b", "a", "c"]);
+
+    aft.shutdown();
+}
+
+#[test]
+fn trace_to_symbol_include_tests_controls_test_only_path() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    let start = root.join("start.ts");
+    let tests = root.join("tests");
+    let bridge = tests.join("bridge.ts");
+    let target = root.join("target.ts");
+    fs::create_dir_all(&tests).unwrap();
+    fs::write(
+        &start,
+        "import { testBridge } from './tests/bridge.js';\nexport function start(): string { return testBridge(); }\n",
+    )
+    .unwrap();
+    fs::write(
+        &bridge,
+        "import { target } from '../target.js';\nexport function testBridge(): string { return target(); }\n",
+    )
+    .unwrap();
+    fs::write(
+        &target,
+        "export function target(): string { return 'target'; }\n",
+    )
+    .unwrap();
+
+    let mut aft = AftProcess::spawn();
+    configure_project(&mut aft, root);
+
+    let hidden = trace_to_symbol_with_include_tests(&mut aft, &start, "start", "target", false);
+    assert_eq!(hidden["success"], true, "trace should succeed: {hidden:?}");
+    assert_eq!(hidden["complete"], true);
+    assert!(
+        hidden["path"].is_null(),
+        "path should be hidden: {hidden:?}"
+    );
+    assert_eq!(hidden["reason"], "no_path_found");
+
+    let included = trace_to_symbol_with_include_tests(&mut aft, &start, "start", "target", true);
+    assert_eq!(
+        included["success"], true,
+        "trace should succeed: {included:?}"
+    );
+    assert_eq!(included["complete"], true);
+    assert_eq!(
+        path_symbols(&included),
+        vec!["start", "testBridge", "target"]
+    );
+
+    aft.shutdown();
+}
+
+#[test]
+fn trace_to_symbol_later_edge_still_finds_shorter_bfs_path() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    let file = root.join("breadth.ts");
+    fs::write(
+        &file,
+        "export function start(): string { slow(); return fast(); }\nfunction slow(): string { return middle(); }\nfunction middle(): string { return target(); }\nfunction fast(): string { return target(); }\nfunction target(): string { return 'target'; }\n",
+    )
+    .unwrap();
+
+    let mut aft = AftProcess::spawn();
+    configure_project(&mut aft, root);
+
+    let resp = trace_to_symbol(&mut aft, &file, "start", "target", None, None);
+    assert_eq!(resp["success"], true, "trace should succeed: {resp:?}");
+    assert_eq!(resp["complete"], true);
+    assert_eq!(path_symbols(&resp), vec!["start", "fast", "target"]);
 
     aft.shutdown();
 }
