@@ -325,6 +325,7 @@ struct RootMeta {
     active_bash_waits: usize,
     idle_artifacts_evicted: bool,
     unbound_quiesced: bool,
+    consecutive_missing_sweeps: u8,
 }
 
 #[derive(Debug)]
@@ -462,6 +463,7 @@ impl RootMeta {
             active_bash_waits: 0,
             idle_artifacts_evicted: false,
             unbound_quiesced: false,
+            consecutive_missing_sweeps: 0,
         }
     }
 
@@ -758,6 +760,29 @@ fn quiesce_connection_roots(
     installed_route_epochs.clear();
 }
 
+/// Per-channel epoch watermarks for roots reclaimed without a client Goodbye.
+/// The 16-bit channel space bounds this map, and no root identity or resource
+/// handle is retained. It exists only so late requests receive a typed error.
+#[derive(Debug, Default)]
+struct ReclaimedRoutes {
+    highest_epoch_by_channel: HashMap<u16, u32>,
+}
+
+impl ReclaimedRoutes {
+    fn insert(&mut self, route: RouteChannel) {
+        self.highest_epoch_by_channel
+            .entry(route.channel)
+            .and_modify(|epoch| *epoch = (*epoch).max(route.epoch))
+            .or_insert(route.epoch);
+    }
+
+    fn contains(&self, route: RouteChannel) -> bool {
+        self.highest_epoch_by_channel
+            .get(&route.channel)
+            .is_some_and(|epoch| route.epoch <= *epoch)
+    }
+}
+
 #[derive(Debug, Default)]
 struct IdleReapOutcome {
     evicted: usize,
@@ -779,8 +804,18 @@ fn reap_idle_roots(
     let mut census = ReapBlockerCensus::default();
     let mut candidates = Vec::new();
 
-    for (root_id, meta) in live_roots.iter() {
+    for (root_id, meta) in live_roots.iter_mut() {
         let deleted = !root_id.as_path().exists();
+        if deleted {
+            // A missing directory makes a bound route obsolete, but one failed
+            // lookup is not enough evidence to tear down a client-visible actor.
+            // Requiring two maintenance sweeps protects atomic replacement and
+            // transient filesystem failures; observing the path resets the proof.
+            meta.consecutive_missing_sweeps = meta.consecutive_missing_sweeps.saturating_add(1);
+        } else {
+            meta.consecutive_missing_sweeps = 0;
+        }
+        let deletion_confirmed = meta.consecutive_missing_sweeps >= 2;
         let has_bound_route = root_channels
             .get(root_id)
             .is_some_and(|channels| !channels.is_empty());
@@ -788,15 +823,13 @@ fn reap_idle_roots(
 
         if deleted {
             let mut retained = false;
-            if has_bound_route {
-                census.bound_routes += 1;
+            if !deletion_confirmed {
+                census.absence_unconfirmed += 1;
                 retained = true;
             }
-            // Count roots whose unbound state has not yet been quiesced.
-            if !meta.unbound_quiesced {
-                census.unbound_quiesced += 1;
-                retained = true;
-            }
+            // Once absence is confirmed, the directory cannot serve this route
+            // again. Neither a stale route nor the lack of normal unbind cleanup
+            // justifies retaining the root; purge removes the route after retirement.
             if meta.active_bash_waits > 0 {
                 census.bash_waits += 1;
                 retained = true;
@@ -934,7 +967,12 @@ fn reap_idle_roots(
 #[allow(clippy::too_many_arguments)]
 fn purge_deleted_root_residents(
     root_id: &ProjectRootId,
+    routes: &mut HashMap<RouteChannel, RouteIdentity>,
     root_channels: &mut HashMap<ProjectRootId, HashSet<RouteChannel>>,
+    installed_route_epochs: &mut HashMap<u16, u32>,
+    route_bash_cancels: &mut HashMap<RouteChannel, bash::RouteBashCancel>,
+    retry_buffer: &mut RetryBuffer,
+    reclaimed_routes: &mut ReclaimedRoutes,
     session_identity: &mut HashMap<(ProjectRootId, String), RetainedSessionIdentity>,
     push_buffer: &mut HashMap<push::ReplayKey, VecDeque<PushFrame>>,
     bg_subs: &mut HashMap<RouteChannel, BgSub>,
@@ -943,21 +981,41 @@ fn purge_deleted_root_residents(
     bg_wake_epoch: &mut HashMap<(ProjectRootId, String), u64>,
     pending_bash_asks: &mut HashMap<ReverseCorrKey, PendingBashAsk>,
 ) {
+    let mut stale_routes = root_channels.get(root_id).cloned().unwrap_or_default();
+    stale_routes.extend(
+        routes
+            .iter()
+            .filter_map(|(route, identity)| (&identity.root == root_id).then_some(*route)),
+    );
+    stale_routes.extend(
+        bg_sub_by_session
+            .iter()
+            .filter_map(|((root, _), route)| (root == root_id).then_some(*route)),
+    );
+    stale_routes.extend(
+        pending_bash_asks
+            .values()
+            .filter_map(|ask| (&ask.root == root_id).then_some(ask.route)),
+    );
+
+    for route in stale_routes {
+        reclaimed_routes.insert(route);
+        remove_installed_route(installed_route_epochs, route);
+        remove_route_channel(routes, root_channels, route);
+        if let Some(cancel) = route_bash_cancels.remove(&route) {
+            cancel.token.cancel();
+        }
+        retry_buffer.remove(&route);
+        bg_subs.remove(&route);
+        bg_wake_pending.remove(&route);
+    }
     root_channels.remove(root_id);
     session_identity.retain(|(root, _), _| root != root_id);
     push_buffer.retain(|key, _| &key.root != root_id);
     bg_wake_epoch.retain(|(root, _), _| root != root_id);
     pending_bash_asks.retain(|_, ask| &ask.root != root_id);
-
-    let stale_subscriptions = bg_sub_by_session
-        .iter()
-        .filter_map(|((root, _), channel)| (root == root_id).then_some(*channel))
-        .collect::<Vec<_>>();
     bg_sub_by_session.retain(|(root, _), _| root != root_id);
-    for channel in stale_subscriptions {
-        bg_subs.remove(&channel);
-        bg_wake_pending.remove(&channel);
-    }
+
     log::info!(
         "subc attach: fully forgot deleted root {}",
         root_id.as_path().display()
@@ -1061,9 +1119,23 @@ fn remove_installed_route(installed_epochs: &mut HashMap<u16, u32>, route: Route
     }
 }
 
-fn ingress_route_is_current(installed_epochs: &HashMap<u16, u32>, frame: &Frame) -> bool {
-    frame.header.channel == 0
+fn ingress_route_should_be_processed(
+    installed_epochs: &HashMap<u16, u32>,
+    reclaimed_routes: &ReclaimedRoutes,
+    frame: &Frame,
+) -> bool {
+    if frame.header.channel == 0
         || installed_epochs.get(&frame.header.channel).copied() == Some(frame.header.epoch)
+    {
+        return true;
+    }
+
+    // A late request for a reclaimed root reaches the normal unknown-route
+    // handler, which returns the typed `route_not_bound` error. Other stale or
+    // never-installed generations remain silent so they cannot affect a newer
+    // route or change the protocol's rejected-bind behavior.
+    frame.header.ty == FrameType::Request
+        && reclaimed_routes.contains(route_key(frame.header.channel, frame.header.epoch))
 }
 
 fn bash_elicitation_timeout() -> Duration {
@@ -2213,6 +2285,7 @@ where
         HashMap::new();
     let mut push_buffer: HashMap<push::ReplayKey, VecDeque<PushFrame>> = HashMap::new();
     let mut retry_buffer: RetryBuffer = HashMap::new();
+    let mut reclaimed_routes = ReclaimedRoutes::default();
     let mut completed_tasks = push::CompletedTaskIds::default();
     let mut live_roots: HashMap<ProjectRootId, RootMeta> = HashMap::new();
     let mut pending_binds: HashMap<RouteChannel, PendingBind> = HashMap::new();
@@ -2380,7 +2453,11 @@ where
                 let phase_trace = frame.phase_trace;
                 let frame = frame.frame;
 
-                if !ingress_route_is_current(&installed_route_epochs, &frame) {
+                if !ingress_route_should_be_processed(
+                    &installed_route_epochs,
+                    &reclaimed_routes,
+                    &frame,
+                ) {
                     log::debug!(
                         "subc attach: silently dropping {:?} for uninstalled route {}@{}",
                         frame.header.ty,
@@ -2695,6 +2772,14 @@ where
                 // inbound route/control messages and push completions have run,
                 // so maintenance does not block the actor from handling the
                 // first request that arrives after a route bind is acknowledged.
+                let reaped_lsp_children = shared_app
+                    .lsp_child_registry()
+                    .reap_children_with_gone_cwd();
+                if reaped_lsp_children > 0 {
+                    log::warn!(
+                        "subc attach: reaped {reaped_lsp_children} LSP child process group(s) whose cwd no longer exists"
+                    );
+                }
                 let reap = reap_idle_roots(
                     Instant::now(),
                     &mut live_roots,
@@ -2706,7 +2791,12 @@ where
                 for root_id in &reap.forgotten_deleted_roots {
                     purge_deleted_root_residents(
                         root_id,
+                        &mut routes,
                         &mut root_channels,
+                        &mut installed_route_epochs,
+                        &mut route_bash_cancels,
+                        &mut retry_buffer,
+                        &mut reclaimed_routes,
                         &mut session_identity,
                         &mut push_buffer,
                         &mut bg_subs,
@@ -5175,6 +5265,168 @@ mod tests {
     }
 
     #[test]
+    fn deleted_root_with_bound_route_is_reclaimed_after_confirmation_and_routes_are_purged() {
+        let (root_dir, root) = test_root("deleted-bound-root-reap");
+        let executor = Arc::new(Executor::new());
+        assert!(executor.register_actor(root.clone(), test_ctx()));
+        root_dir.close().expect("delete project root");
+
+        let route = route_key(19, 3);
+        let mut live_roots = HashMap::from([(root.clone(), RootMeta::new(Instant::now()))]);
+        let cancel_signal = PersistentCancelSignal::new();
+        let mut routes = HashMap::from([(route, route_identity(&root, "deleted-route"))]);
+        let mut root_channels = HashMap::from([(root.clone(), HashSet::from([route]))]);
+        let mut installed_route_epochs = HashMap::from([(route.channel, route.epoch)]);
+        let mut route_bash_cancels = HashMap::from([(
+            route,
+            bash::RouteBashCancel {
+                token: cancel_signal.clone(),
+                active_waits: 0,
+            },
+        )]);
+        let metrics = DispatchPathMetrics::new();
+
+        let first = reap_idle_roots(
+            Instant::now(),
+            &mut live_roots,
+            &HashMap::new(),
+            &root_channels,
+            &executor,
+            &metrics,
+        );
+        assert!(first.forgotten_deleted_roots.is_empty());
+        assert!(executor.actor_registered(&root));
+
+        let mut forgotten = Vec::new();
+        for _ in 0..100 {
+            let outcome = reap_idle_roots(
+                Instant::now(),
+                &mut live_roots,
+                &HashMap::new(),
+                &root_channels,
+                &executor,
+                &metrics,
+            );
+            if !outcome.forgotten_deleted_roots.is_empty() {
+                forgotten = outcome.forgotten_deleted_roots;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(forgotten, vec![root.clone()]);
+        assert!(!executor.actor_registered(&root));
+
+        let mut retry_buffer = HashMap::new();
+        let mut reclaimed_routes = ReclaimedRoutes::default();
+        let mut session_identity = HashMap::new();
+        let mut push_buffer = HashMap::new();
+        let mut bg_subs = HashMap::new();
+        let mut bg_sub_by_session = HashMap::new();
+        let mut bg_wake_pending = HashSet::new();
+        let mut bg_wake_epoch = HashMap::new();
+        let mut pending_bash_asks = HashMap::new();
+        purge_deleted_root_residents(
+            &root,
+            &mut routes,
+            &mut root_channels,
+            &mut installed_route_epochs,
+            &mut route_bash_cancels,
+            &mut retry_buffer,
+            &mut reclaimed_routes,
+            &mut session_identity,
+            &mut push_buffer,
+            &mut bg_subs,
+            &mut bg_sub_by_session,
+            &mut bg_wake_pending,
+            &mut bg_wake_epoch,
+            &mut pending_bash_asks,
+        );
+
+        assert!(routes.is_empty());
+        assert!(root_channels.is_empty());
+        assert!(installed_route_epochs.is_empty());
+        assert!(route_bash_cancels.is_empty());
+        assert!(reclaimed_routes.contains(route));
+        assert!(cancel_signal.is_cancelled());
+    }
+
+    #[test]
+    fn deleted_root_is_not_reclaimed_on_first_absence_observation() {
+        let (root_dir, root) = test_root("deleted-root-first-observation");
+        let ctx = test_ctx();
+        ctx.mark_subc_unbound();
+        let executor = Arc::new(Executor::new());
+        assert!(executor.register_actor(root.clone(), ctx));
+        root_dir.close().expect("delete project root");
+
+        let mut meta = RootMeta::new(Instant::now());
+        meta.unbound_quiesced = true;
+        let mut live_roots = HashMap::from([(root.clone(), meta)]);
+        let outcome = reap_idle_roots(
+            Instant::now(),
+            &mut live_roots,
+            &HashMap::new(),
+            &HashMap::new(),
+            &executor,
+            &DispatchPathMetrics::new(),
+        );
+
+        assert!(outcome.forgotten_deleted_roots.is_empty());
+        assert!(live_roots.contains_key(&root));
+        assert!(executor.actor_registered(&root));
+    }
+
+    #[test]
+    fn observing_root_again_resets_deleted_sweep_confirmation() {
+        let (root_dir, root) = test_root("deleted-root-observation-reset");
+        let ctx = test_ctx();
+        ctx.mark_subc_unbound();
+        let executor = Arc::new(Executor::new());
+        assert!(executor.register_actor(root.clone(), ctx));
+        root_dir.close().expect("delete project root");
+
+        let mut meta = RootMeta::new(Instant::now());
+        meta.unbound_quiesced = true;
+        let mut live_roots = HashMap::from([(root.clone(), meta)]);
+        let pending_binds = HashMap::new();
+        let root_channels = HashMap::new();
+        let metrics = DispatchPathMetrics::new();
+
+        let first = reap_idle_roots(
+            Instant::now(),
+            &mut live_roots,
+            &pending_binds,
+            &root_channels,
+            &executor,
+            &metrics,
+        );
+        assert!(first.forgotten_deleted_roots.is_empty());
+
+        std::fs::create_dir_all(root.as_path()).expect("restore project root");
+        reap_idle_roots(
+            Instant::now(),
+            &mut live_roots,
+            &pending_binds,
+            &root_channels,
+            &executor,
+            &metrics,
+        );
+        std::fs::remove_dir_all(root.as_path()).expect("delete project root again");
+
+        let after_reset = reap_idle_roots(
+            Instant::now(),
+            &mut live_roots,
+            &pending_binds,
+            &root_channels,
+            &executor,
+            &metrics,
+        );
+        assert!(after_reset.forgotten_deleted_roots.is_empty());
+        assert!(live_roots.contains_key(&root));
+        assert!(executor.actor_registered(&root));
+    }
+
+    #[test]
     fn deleted_idle_root_is_fully_forgotten_and_status_counts_drop() {
         let (root_dir, root) = test_root("deleted-root-reap");
         let app = App::default_shared();
@@ -5246,7 +5498,8 @@ mod tests {
             .and_then(|metrics| metrics.get("reap"))
             .expect("reap health metrics");
         assert_eq!(reap["deleted_retained"].as_u64(), Some(1));
-        assert_eq!(reap["blockers"]["unbound_quiesced"].as_u64(), Some(1));
+        assert_eq!(reap["blockers"]["absence_unconfirmed"].as_u64(), Some(1));
+        assert_eq!(reap["blockers"]["unbound_quiesced"].as_u64(), Some(0));
         assert_eq!(reap["blockers"]["actor_busy"].as_u64(), Some(0));
     }
 
@@ -5300,10 +5553,17 @@ mod tests {
         let mut bg_wake_pending = HashSet::new();
         let mut bg_wake_epoch = HashMap::new();
         let mut pending_bash_asks = HashMap::new();
+        let mut retry_buffer = HashMap::new();
+        let mut reclaimed_routes = ReclaimedRoutes::default();
         for forgotten in &outcome.forgotten_deleted_roots {
             purge_deleted_root_residents(
                 forgotten,
+                &mut routes,
                 &mut root_channels,
+                &mut installed_route_epochs,
+                &mut route_bash_cancels,
+                &mut retry_buffer,
+                &mut reclaimed_routes,
                 &mut session_identity,
                 &mut push_buffer,
                 &mut bg_subs,
@@ -6043,8 +6303,10 @@ mod tests {
     }
 
     #[test]
-    fn ingress_epoch_validation_silently_drops_every_stale_route_frame() {
+    fn ingress_epoch_validation_rejects_reclaimed_requests_and_drops_other_stale_epochs() {
         let installed = HashMap::from([(7, 9)]);
+        let mut reclaimed = ReclaimedRoutes::default();
+        reclaimed.insert(route_key(8, 1));
         for ty in [
             FrameType::Request,
             FrameType::Response,
@@ -6059,10 +6321,13 @@ mod tests {
                 br#"{}"#.to_vec()
             };
             let stale = Frame::build(ty, control_flags(), 7, 8, 41, body).unwrap();
-            assert!(!ingress_route_is_current(&installed, &stale), "{ty:?}");
+            assert!(
+                !ingress_route_should_be_processed(&installed, &reclaimed, &stale),
+                "{ty:?}"
+            );
         }
 
-        let uninstalled = Frame::build(
+        let reclaimed_request = Frame::build(
             FrameType::Request,
             control_flags(),
             8,
@@ -6071,7 +6336,26 @@ mod tests {
             br#"{}"#.to_vec(),
         )
         .unwrap();
-        assert!(!ingress_route_is_current(&installed, &uninstalled));
+        assert!(ingress_route_should_be_processed(
+            &installed,
+            &reclaimed,
+            &reclaimed_request
+        ));
+
+        let never_installed = Frame::build(
+            FrameType::Request,
+            control_flags(),
+            9,
+            1,
+            43,
+            br#"{}"#.to_vec(),
+        )
+        .unwrap();
+        assert!(!ingress_route_should_be_processed(
+            &installed,
+            &reclaimed,
+            &never_installed
+        ));
 
         let current = Frame::build(
             FrameType::Request,
@@ -6083,8 +6367,12 @@ mod tests {
         )
         .unwrap();
         let control = Frame::build(FrameType::Ping, control_flags(), 0, 0, 44, Vec::new()).unwrap();
-        assert!(ingress_route_is_current(&installed, &current));
-        assert!(ingress_route_is_current(&installed, &control));
+        assert!(ingress_route_should_be_processed(
+            &installed, &reclaimed, &current
+        ));
+        assert!(ingress_route_should_be_processed(
+            &installed, &reclaimed, &control
+        ));
         assert_eq!(installed, HashMap::from([(7, 9)]));
     }
 

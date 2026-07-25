@@ -13,8 +13,15 @@
 
 use std::collections::HashSet;
 use std::io;
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LspChildHealth {
+    pub spawned: usize,
+    pub cwd_gone: usize,
+}
 
 #[derive(Clone, Default)]
 pub struct LspChildRegistry {
@@ -60,6 +67,42 @@ impl LspChildRegistry {
             .lock()
             .map(|set| set.iter().copied().collect())
             .unwrap_or_default()
+    }
+
+    /// Snapshot the current child count and the children whose working directory
+    /// no longer resolves. CWD lookup uses the kernel process API rather than a
+    /// subprocess so this remains cheap enough for health and maintenance paths.
+    pub fn health_snapshot(&self) -> LspChildHealth {
+        health_for_pids(self.pids())
+    }
+
+    /// Non-blocking health snapshot for latency-sensitive probes.
+    pub fn try_health_snapshot(&self) -> Option<LspChildHealth> {
+        let pids = self
+            .inner
+            .try_lock()
+            .ok()?
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        Some(health_for_pids(pids))
+    }
+
+    /// Kill and untrack every child whose working directory no longer exists.
+    /// This is a crash/leak backstop; ordinary root teardown still drops the
+    /// owning `LspClient` and performs its normal process-group cleanup.
+    pub fn reap_children_with_gone_cwd(&self) -> usize {
+        let mut reaped = 0;
+        for pid in self.pids() {
+            if !matches!(child_cwd_state(pid), ChildCwdState::Gone) {
+                continue;
+            }
+            if kill_child_process_group(pid) {
+                self.untrack(pid);
+                reaped += 1;
+            }
+        }
+        reaped
     }
 
     /// Force-kill every tracked child synchronously. Used by the signal
@@ -116,6 +159,156 @@ impl LspChildRegistry {
     }
 }
 
+fn health_for_pids(pids: Vec<u32>) -> LspChildHealth {
+    let cwd_gone = pids
+        .iter()
+        .filter(|pid| matches!(child_cwd_state(**pid), ChildCwdState::Gone))
+        .count();
+    LspChildHealth {
+        spawned: pids.len(),
+        cwd_gone,
+    }
+}
+
+#[derive(Debug)]
+enum ChildCwdState {
+    Present,
+    Gone,
+    Unknown,
+}
+
+fn child_cwd_state(pid: u32) -> ChildCwdState {
+    let Ok(cwd) = child_cwd(pid) else {
+        return ChildCwdState::Unknown;
+    };
+    match cwd.try_exists() {
+        Ok(true) => ChildCwdState::Present,
+        Ok(false) => ChildCwdState::Gone,
+        Err(_) => ChildCwdState::Unknown,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn child_cwd(pid: u32) -> io::Result<PathBuf> {
+    std::fs::read_link(format!("/proc/{pid}/cwd"))
+}
+
+#[cfg(target_os = "macos")]
+fn child_cwd(pid: u32) -> io::Result<PathBuf> {
+    use std::ffi::CStr;
+    use std::mem::{size_of, zeroed};
+    use std::os::unix::ffi::OsStrExt;
+
+    const PROC_PIDVNODEPATHINFO: libc::c_int = 9;
+
+    #[repr(C)]
+    struct VInfoStat {
+        dev: u32,
+        mode: u16,
+        nlink: u16,
+        ino: u64,
+        uid: u32,
+        gid: u32,
+        atime: i64,
+        atime_nsec: i64,
+        mtime: i64,
+        mtime_nsec: i64,
+        ctime: i64,
+        ctime_nsec: i64,
+        birthtime: i64,
+        birthtime_nsec: i64,
+        size: i64,
+        blocks: i64,
+        block_size: i32,
+        flags: u32,
+        generation: u32,
+        raw_device: u32,
+        spare: [i64; 2],
+    }
+
+    #[repr(C)]
+    struct VnodeInfo {
+        stat: VInfoStat,
+        vnode_type: i32,
+        pad: i32,
+        fsid: [i32; 2],
+    }
+
+    #[repr(C)]
+    struct VnodeInfoPath {
+        info: VnodeInfo,
+        path: [libc::c_char; libc::MAXPATHLEN as usize],
+    }
+
+    #[repr(C)]
+    struct ProcVnodePathInfo {
+        cwd: VnodeInfoPath,
+        root: VnodeInfoPath,
+    }
+
+    #[link(name = "proc")]
+    extern "C" {
+        fn proc_pidinfo(
+            pid: libc::c_int,
+            flavor: libc::c_int,
+            arg: u64,
+            buffer: *mut libc::c_void,
+            buffer_size: libc::c_int,
+        ) -> libc::c_int;
+    }
+
+    let pid = libc::c_int::try_from(pid)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "PID exceeds c_int"))?;
+    // SAFETY: the value is plain C data and proc_pidinfo receives its exact size.
+    let mut info: ProcVnodePathInfo = unsafe { zeroed() };
+    let buffer_size = libc::c_int::try_from(size_of::<ProcVnodePathInfo>())
+        .map_err(|_| io::Error::other("proc vnode path buffer is too large"))?;
+    // SAFETY: `info` is valid writable storage for `buffer_size` bytes, and the
+    // libproc call does not retain the pointer after returning.
+    let bytes = unsafe {
+        proc_pidinfo(
+            pid,
+            PROC_PIDVNODEPATHINFO,
+            0,
+            (&mut info as *mut ProcVnodePathInfo).cast(),
+            buffer_size,
+        )
+    };
+    if bytes <= 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the kernel writes a NUL-terminated MAXPATHLEN path into this field.
+    let cwd = unsafe { CStr::from_ptr(info.cwd.path.as_ptr()) };
+    Ok(PathBuf::from(std::ffi::OsStr::from_bytes(cwd.to_bytes())))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn child_cwd(_pid: u32) -> io::Result<PathBuf> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "child cwd lookup is unsupported on this platform",
+    ))
+}
+
+#[cfg(unix)]
+fn kill_child_process_group(pid: u32) -> bool {
+    let Ok(pgid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    // LspClient creates a session per child, so the child PID is also its PGID.
+    // SAFETY: killpg does not dereference pointers and SIGKILL needs no handler.
+    let result = unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    result == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+}
+
+#[cfg(not(unix))]
+fn kill_child_process_group(pid: u32) -> bool {
+    std::process::Command::new("taskkill")
+        .args(["/F", "/T", "/PID", &pid.to_string()])
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +343,20 @@ mod tests {
     }
 
     #[test]
+    fn health_snapshot_counts_spawned_child_with_live_cwd() {
+        let reg = LspChildRegistry::new();
+        reg.track(std::process::id());
+        assert_eq!(
+            reg.health_snapshot(),
+            LspChildHealth {
+                spawned: 1,
+                cwd_gone: 0,
+            }
+        );
+        reg.untrack(std::process::id());
+    }
+
+    #[test]
     fn kill_all_with_no_pids_returns_zero() {
         let reg = LspChildRegistry::new();
         assert_eq!(reg.kill_all(), 0);
@@ -173,6 +380,42 @@ mod tests {
         assert!(reg.pids().contains(&pid));
         let _ = child.wait();
         reg.untrack(pid);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn maintenance_reaps_child_whose_cwd_was_deleted() {
+        use std::os::unix::process::CommandExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let reg = LspChildRegistry::new();
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "exec sleep 60"])
+            .current_dir(root.path());
+        // Match LspClient: each child leads its own process group, allowing the
+        // maintenance backstop to kill wrappers and descendants together.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let mut child = reg.spawn_tracked(&mut command).expect("spawn child");
+        root.close().expect("delete child cwd");
+
+        assert_eq!(
+            reg.health_snapshot(),
+            LspChildHealth {
+                spawned: 1,
+                cwd_gone: 1,
+            }
+        );
+        assert_eq!(reg.reap_children_with_gone_cwd(), 1);
+        child.wait().expect("reap child");
+        assert_eq!(reg.health_snapshot(), LspChildHealth::default());
     }
 
     // Regression for the npm-wrapper orphan bug: biome ships as `node

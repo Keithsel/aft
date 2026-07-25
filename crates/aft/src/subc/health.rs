@@ -13,6 +13,7 @@ use crate::executor::BindBlockerSnapshot;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct ReapBlockerCensus {
     pub(super) deleted_retained: usize,
+    pub(super) absence_unconfirmed: usize,
     pub(super) bound_routes: usize,
     pub(super) unbound_quiesced: usize,
     pub(super) bash_waits: usize,
@@ -28,7 +29,8 @@ pub(super) struct ReapBlockerCensus {
 impl ReapBlockerCensus {
     pub(super) fn blocker_histogram(&self) -> String {
         format!(
-            "bound_routes={},unbound_quiesced={},bash_waits={},maintenance_pending={},maintenance_queued={},pending_binds={},actor_busy={},actor_state_busy={},artifact_eviction_blocked={},artifact_eviction_failed={}",
+            "absence_unconfirmed={},bound_routes={},unbound_quiesced={},bash_waits={},maintenance_pending={},maintenance_queued={},pending_binds={},actor_busy={},actor_state_busy={},artifact_eviction_blocked={},artifact_eviction_failed={}",
+            self.absence_unconfirmed,
             self.bound_routes,
             self.unbound_quiesced,
             self.bash_waits,
@@ -46,6 +48,7 @@ impl ReapBlockerCensus {
 struct ReapMetrics {
     last_sweep_ms: AtomicU64,
     deleted_retained: AtomicUsize,
+    absence_unconfirmed: AtomicUsize,
     bound_routes: AtomicUsize,
     unbound_quiesced: AtomicUsize,
     bash_waits: AtomicUsize,
@@ -63,6 +66,7 @@ impl ReapMetrics {
         Self {
             last_sweep_ms: AtomicU64::new(0),
             deleted_retained: AtomicUsize::new(0),
+            absence_unconfirmed: AtomicUsize::new(0),
             bound_routes: AtomicUsize::new(0),
             unbound_quiesced: AtomicUsize::new(0),
             bash_waits: AtomicUsize::new(0),
@@ -80,6 +84,8 @@ impl ReapMetrics {
         self.last_sweep_ms.store(now_ms, Ordering::Relaxed);
         self.deleted_retained
             .store(census.deleted_retained, Ordering::Relaxed);
+        self.absence_unconfirmed
+            .store(census.absence_unconfirmed, Ordering::Relaxed);
         self.bound_routes
             .store(census.bound_routes, Ordering::Relaxed);
         self.unbound_quiesced
@@ -104,6 +110,7 @@ impl ReapMetrics {
         json!({
             "deleted_retained": self.deleted_retained.load(Ordering::Relaxed),
             "blockers": {
+                "absence_unconfirmed": self.absence_unconfirmed.load(Ordering::Relaxed),
                 "bound_routes": self.bound_routes.load(Ordering::Relaxed),
                 "unbound_quiesced": self.unbound_quiesced.load(Ordering::Relaxed),
                 "bash_waits": self.bash_waits.load(Ordering::Relaxed),
@@ -434,6 +441,8 @@ pub(super) fn build_health_report(
         .iter()
         .filter(|root| !matches!(root.state, RootHealthState::Busy) && !root.is_fully_ready())
         .count();
+    let lsp_children = shared_app.lsp_child_registry().try_health_snapshot();
+
     let detail = if scheduler_busy {
         Some("executor scheduler state could not be snapshotted without contention".to_string())
     } else if busy_roots > 0 {
@@ -466,6 +475,8 @@ pub(super) fn build_health_report(
                 "live_watchers": shared_app.watcher_count(),
                 "live_actor_roots": shared_app.actor_root_count(),
                 "open_routes": shared_app.open_route_count(),
+                "spawned_lsp_children": lsp_children.map(|health| health.spawned),
+                "lsp_children_with_deleted_cwd": lsp_children.map(|health| health.cwd_gone),
             },
             "memory": memory,
             "roots": roots,
@@ -608,12 +619,10 @@ mod tests {
             drr_quantum: 1,
         });
         let dispatch_path_metrics = Arc::new(DispatchPathMetrics::new());
-        let report = build_health_report(
-            &executor,
-            &HashMap::new(),
-            &dispatch_path_metrics,
-            &crate::context::App::default_shared(),
-        );
+        let app = crate::context::App::default_shared();
+        let registry = app.lsp_child_registry();
+        registry.track(std::process::id());
+        let report = build_health_report(&executor, &HashMap::new(), &dispatch_path_metrics, &app);
         let metrics = report.metrics.expect("health metrics present");
         let memory = metrics.get("memory").expect("memory rollup present");
         // No actors registered: ready rollup with zero roots and process totals.
@@ -630,6 +639,9 @@ mod tests {
                 "runtime.{key} must be a number"
             );
         }
+        assert_eq!(runtime["spawned_lsp_children"].as_u64(), Some(1));
+        assert_eq!(runtime["lsp_children_with_deleted_cwd"].as_u64(), Some(0));
+        registry.untrack(std::process::id());
     }
 
     #[test]
