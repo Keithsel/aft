@@ -295,9 +295,21 @@ fn kill_child_process_group(pid: u32) -> bool {
     let Ok(pgid) = libc::pid_t::try_from(pid) else {
         return false;
     };
-    // LspClient creates a session per child, so the child PID is also its PGID.
-    // SAFETY: killpg does not dereference pointers and SIGKILL needs no handler.
-    let result = unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    // Ask before insisting. A language server given SIGTERM flushes its caches
+    // and releases its files; SIGKILL leaves whatever it was mid-write. When
+    // 280 leaked servers were reaped by hand on a loaded machine, every one
+    // exited on SIGTERM within eight seconds and none needed escalation, so
+    // the polite signal is not a theoretical courtesy here.
+    //
+    // The escalation is deliberately absent rather than forgotten: this sweep
+    // runs periodically, so a child that ignores SIGTERM is simply signalled
+    // again on the next pass, and a process that survives repeated SIGTERMs is
+    // wedged in a way SIGKILL from a maintenance tick should not paper over.
+    // The SIGKILL path stays where it belongs — process exit, where there is no
+    // next pass. LspClient creates a session per child, so the child PID is
+    // also its PGID.
+    // SAFETY: killpg does not dereference pointers and SIGTERM needs no handler.
+    let result = unsafe { libc::killpg(pgid, libc::SIGTERM) };
     result == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
 }
 
