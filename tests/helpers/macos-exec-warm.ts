@@ -3,19 +3,24 @@ import { spawn } from "node:child_process";
 /**
  * Ad-hoc sign and warm a binary the test suite is about to spawn repeatedly.
  *
- * macOS assesses an executable's Gatekeeper/XProtect status once per inode. A
- * binary cargo just relinked is a brand-new inode, so its first exec pays the
- * full assessment. Measured on this repo's debug binary, relinking before each
- * sample: unsigned cold exec 3.7s and 5.2s, with one 88.7s outlier; ad-hoc
- * signed cold exec 1.1s and 1.3s; already-assessed inode 8ms. e2e tests spawn
- * the binary under a short per-spawn timeout, so a cold exec reads as a hang
- * and takes the whole suite with it — this repo lost two full TS-suite runs to
- * exactly that, and the outlier shows the tail is unbounded under load.
+ * The first exec of a freshly written binary is expensive on macOS, and it is
+ * NOT Gatekeeper assessment: setting com.apple.quarantine makes no difference,
+ * and a plain read of the file buys the same speedup as re-signing. Measured on
+ * this repo's 178 MB debug binary, relinking before each sample — cold 4.2s,
+ * after `cat > /dev/null` 1.14s, after ad-hoc signing 1.1s (indistinguishable
+ * from the read), second exec of the same inode 0.01s. Two layers: page-in,
+ * which any full read clears, plus a per-inode first-exec cost that only an
+ * actual exec clears. Both scale with binary size, and both inflate sharply
+ * under memory pressure.
  *
- * Both steps earn their place: signing cuts the assessment several-fold, and
- * the throwaway exec absorbs what remains, leaving timed spawns at warm cost.
- * Both are best-effort — this is a latency remedy, not a correctness gate, so
- * every failure path is swallowed and callers treat it as advisory.
+ * cargo mints a new inode on every relink, and e2e tests spawn the binary under
+ * short per-spawn timeouts, so that first exec reads as a hang and takes the
+ * whole suite with it — this repo lost two full TS-suite runs to exactly that.
+ *
+ * The EXEC is the load-bearing step here; signing only helps because it reads
+ * the file on the way past. Both are best-effort: this is a latency remedy, not
+ * a correctness gate, so every failure path is swallowed and callers treat it
+ * as advisory.
  *
  * No-op off Darwin. Cheap to repeat — warming an already-warm inode is a few ms.
  */

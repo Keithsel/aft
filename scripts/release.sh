@@ -248,10 +248,11 @@ fi
 # Slow checks AFTER the fast ones pass.
 #
 # TRUST_CI=1: skip the local Rust/JS/docker test re-run when CI is already
-# green on EXACTLY this commit. The local suite duplicates CI's coverage and
-# on macOS randomly loses 30-90 minutes to exec-assessment wedges; CI on the
-# same SHA is strictly more coverage (3 OS × unit + e2e). Verified, never
-# assumed: gh must report a completed successful run for HEAD's SHA.
+# green on EXACTLY this commit. The local suite duplicates CI's coverage and on
+# macOS randomly loses 30-90 minutes to first-exec cost on freshly built
+# binaries (see scripts/rust-test-gate.sh); CI on the same SHA is strictly more
+# coverage (3 OS × unit + e2e). Verified, never assumed: gh must report a
+# completed successful run for HEAD's SHA.
 if [ "${TRUST_CI:-}" = "1" ]; then
   head_sha=$(git rev-parse HEAD)
   ci_ok=$(gh run list --commit "$head_sha" --workflow Tests --json status,conclusion \

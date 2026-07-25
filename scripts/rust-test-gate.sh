@@ -33,26 +33,34 @@ run_phase() {
 run_phase "cargo test --workspace --lib --bins --quiet" \
   cargo test --workspace --lib --bins --quiet
 
-# macOS: the first exec of a freshly-linked binary pays a one-time
-# syspolicyd assessment + XProtect scan tax (measured 1-4s cold, ~25ms once
-# cached per inode). nextest exec's EVERY test-harness binary in
-# target/*/deps, and the integration tests additionally spawn
-# target/debug/aft. Without warming, the first wave of those cold execs
-# queues behind the busy scanner during the TIMED run and dies together at
-# the per-test timeout (the 16-test SIGTERM-at-400s storm). Pay the tax HERE,
-# untimed: ad-hoc sign (cuts the cold tax ~3.5x) + exec-once every test
-# binary so the timed run hits the warm 25ms path.
+# macOS: the first exec of a freshly-linked binary is expensive, and it is NOT
+# Gatekeeper assessment — setting com.apple.quarantine changes nothing, and a
+# plain `cat > /dev/null` buys the same speedup as re-signing. Measured on a
+# 178 MB debug binary, relinking before each sample: cold 4.2s, after a full
+# read 1.14s, after ad-hoc signing 1.1s (indistinguishable from the read),
+# second exec of the same inode 0.01s. So the cost is two layers — page-in,
+# clearable by any full read, plus a per-inode first-exec cost that ONLY an
+# actual exec clears.
+#
+# nextest exec's EVERY test-harness binary in target/*/deps, and the
+# integration tests additionally spawn target/debug/aft. Without warming, that
+# first wave of cold execs lands inside the TIMED run and dies together at the
+# per-test timeout (the 16-test SIGTERM-at-400s storm). Pay it HERE, untimed.
+#
+# The EXEC is the load-bearing step; the sign only helps because it reads the
+# file. Signing is kept anyway for an unrelated reason: overwriting a signed
+# binary invalidates its signature and macOS then SIGKILLs it.
 #
 # NOTE: an earlier version tried `pkill XprotectService/syspolicyd` on a slow
-# probe — that is a no-op without sudo (both run as root; pkill returns
-# "Operation not permitted"). The real, sudo-free lever is sign+warm below.
+# probe — a no-op without sudo (both run as root; pkill returns "Operation not
+# permitted"), and pointless anyway now the actor is known not to be them.
 # Opt out with AFT_GATE_NO_XPROTECT_REMEDIATION=1.
 warm_macos_test_binaries() {
   # Ask cargo for the EXACT set of test-harness executables it built (the
   # `executable` field in the build JSON — ~24 binaries, not the thousands of
-  # incremental fragments under deps/). Ad-hoc sign each (cuts the cold tax
-  # ~3.5x) and exec `--list` once (pays + caches the assessment without
-  # running tests). $@ = the cargo build args that define the profile/scope.
+  # incremental fragments under deps/). Sign each, then exec `--list` once,
+  # which pays both layers without running any test. $@ = the cargo build args
+  # that define the profile/scope.
   local bins
   bins="$(cargo test "$@" --no-run --message-format=json 2>/dev/null | python3 -c "
 import sys, json
@@ -78,7 +86,7 @@ for p in sorted(seen): print(p)
   fi
 }
 if [[ "$(uname)" == "Darwin" && "${AFT_GATE_NO_XPROTECT_REMEDIATION:-}" != "1" ]]; then
-  run_phase "warm macOS exec assessment: sign + warm every debug test binary" \
+  run_phase "warm macOS first-exec cost: sign + exec every debug test binary" \
     bash -c "$(declare -f warm_macos_test_binaries)
       warm_macos_test_binaries --workspace"
 fi
