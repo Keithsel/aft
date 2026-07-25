@@ -1520,6 +1520,53 @@ fn organize_imports_preserves_side_effect_order() {
 }
 
 #[test]
+fn organize_imports_ruby_preserves_reexecuting_loads_but_deduplicates_requires() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+
+    let load_file = dir.path().join("repeated_load.rb");
+    fs::write(
+        &load_file,
+        "load 'worker.rb'\nload 'worker.rb'\n\nputs 'done'\n",
+    )
+    .unwrap();
+    let load_resp =
+        send_organize_imports(&mut aft, "org-ruby-load", &load_file.display().to_string());
+    assert_eq!(
+        load_resp["success"], true,
+        "organize should succeed: {load_resp:?}"
+    );
+    let load_content = fs::read_to_string(&load_file).unwrap();
+    assert_eq!(
+        load_content.matches("load 'worker.rb'").count(),
+        2,
+        "each Ruby load must survive organization:\n{load_content}"
+    );
+    assert_eq!(load_resp["removed_duplicates"], 0);
+
+    let require_file = dir.path().join("repeated_require.rb");
+    fs::write(
+        &require_file,
+        "require 'worker'\nrequire 'worker'\n\nputs 'done'\n",
+    )
+    .unwrap();
+    let require_resp = send_organize_imports(
+        &mut aft,
+        "org-ruby-require",
+        &require_file.display().to_string(),
+    );
+    assert_eq!(
+        require_resp["success"], true,
+        "organize should succeed: {require_resp:?}"
+    );
+    let require_content = fs::read_to_string(&require_file).unwrap();
+    assert_eq!(require_content.matches("require 'worker'").count(), 1);
+    assert_eq!(require_resp["removed_duplicates"], 1);
+
+    aft.shutdown();
+}
+
+#[test]
 fn organize_imports_preserves_inter_import_comments() {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);

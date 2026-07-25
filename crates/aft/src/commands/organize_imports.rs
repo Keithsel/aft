@@ -759,10 +759,12 @@ fn organize_raw_preserving_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImp
             continue;
         }
 
-        let key = raw_preserving_dedup_key(imp);
-        if !seen.insert(key) {
-            removed += 1;
-            continue;
+        if !import_form_reexecutes_target(&imp.form) {
+            let key = raw_preserving_dedup_key(imp);
+            if !seen.insert(key) {
+                removed += 1;
+                continue;
+            }
         }
 
         if imp.kind == ImportKind::SideEffect {
@@ -788,6 +790,16 @@ fn organize_raw_preserving_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImp
         .collect();
 
     (organized, removed)
+}
+
+fn import_form_reexecutes_target(form: &ImportForm) -> bool {
+    matches!(
+        form,
+        ImportForm::Structured {
+            import_kind: Some(import_kind),
+            ..
+        } if import_kind == "load"
+    )
 }
 
 fn raw_preserving_dedup_key(imp: &ImportStatement) -> String {
