@@ -5350,6 +5350,59 @@ mod tests {
         assert!(cancel_signal.is_cancelled());
     }
 
+    /// The control for the deleted-root reclamation above: a root whose
+    /// directory still EXISTS must stay retained while it holds a bound route,
+    /// even with every other reap precondition satisfied. Without this, the
+    /// suite cannot tell "reclaim roots that are provably gone" apart from
+    /// "reap any root that looks idle" — the second would tear down live
+    /// sessions, and both satisfy the deleted-root tests.
+    #[test]
+    fn live_root_with_bound_route_is_never_reclaimed() {
+        let (_root_dir, root) = test_root("live-bound-root-retained");
+        let ctx = test_ctx();
+        ctx.mark_subc_unbound();
+        let executor = Arc::new(Executor::new());
+        assert!(executor.register_actor(root.clone(), Arc::clone(&ctx)));
+
+        let route = RouteChannel {
+            channel: 7,
+            epoch: 1,
+        };
+        let mut meta = RootMeta::new(Instant::now() - IDLE_ROOT_TTL - Duration::from_secs(1));
+        meta.unbound_quiesced = true;
+        let mut live_roots = HashMap::from([(root.clone(), meta)]);
+        let root_channels = HashMap::from([(root.clone(), HashSet::from([route]))]);
+
+        // Sweep three times because reclamation requires the root path to be
+        // observed missing on two CONSECUTIVE sweeps. A single sweep would pass
+        // here even if reclamation were wrongly unconditional, since the first
+        // absence never reclaims on its own.
+        for _ in 0..3 {
+            let outcome = reap_idle_roots(
+                Instant::now(),
+                &mut live_roots,
+                &HashMap::new(),
+                &root_channels,
+                &executor,
+                &DispatchPathMetrics::new(),
+            );
+            assert!(
+                outcome.forgotten_deleted_roots.is_empty(),
+                "a root whose directory exists must never be forgotten"
+            );
+        }
+
+        assert!(live_roots.contains_key(&root), "live root must be retained");
+        assert!(
+            executor.actor_registered(&root),
+            "live root's actor must survive"
+        );
+        assert!(
+            root.as_path().exists(),
+            "test vehicle must keep the directory alive; otherwise this control proves nothing"
+        );
+    }
+
     #[test]
     fn deleted_root_is_not_reclaimed_on_first_absence_observation() {
         let (root_dir, root) = test_root("deleted-root-first-observation");
