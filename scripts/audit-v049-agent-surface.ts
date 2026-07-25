@@ -55,12 +55,22 @@ interface SourceInventory {
 interface AllowlistEntry {
   path: string;
   location: string;
-  line: number;
-  column: number;
+  /**
+   * Absent for file-level entries. Fixture files are pinned by path alone: an
+   * exact line/column would make every unrelated edit above a mention (an added
+   * import, a reordered block) fail the audit, which is churn with no signal —
+   * a test file cannot be an agent-visible surface, so where the mention sits
+   * inside it tells a reviewer nothing.
+   */
+  line?: number;
+  column?: number;
   token: string;
   class: string;
   reason: string;
 }
+
+/** Classes pinned by path only. See AllowlistEntry.line. */
+const FILE_LEVEL_CLASSES = new Set(["compatibility-fixture"]);
 
 interface Allowlist {
   artifact_id: string;
@@ -188,7 +198,30 @@ function occurrenceEntries(): AllowlistEntry[] {
       }
     }
   }
-  return entries;
+  return collapseFileLevelEntries(entries);
+}
+
+/**
+ * Collapse file-level classes to one entry per (path, token), dropping the
+ * position. Emitting a count instead would reintroduce the same churn through
+ * a different door: adding one mention to an already-listed fixture would
+ * rewrite the artifact and break its byte pin.
+ */
+function collapseFileLevelEntries(entries: AllowlistEntry[]): AllowlistEntry[] {
+  const collapsed: AllowlistEntry[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (!FILE_LEVEL_CLASSES.has(entry.class)) {
+      collapsed.push(entry);
+      continue;
+    }
+    const key = `${entry.path}::${entry.token}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const { line: _line, column: _column, ...rest } = entry;
+    collapsed.push({ ...rest, location: "file-level" });
+  }
+  return collapsed;
 }
 
 function classifyOccurrence(path: string, line: string): { class: string; reason: string } {
@@ -267,6 +300,7 @@ function loadAllowlist(): Allowlist {
 }
 
 function occurrenceKey(entry: Pick<AllowlistEntry, "path" | "line" | "column" | "token">): string {
+  if (entry.line === undefined) return `${entry.path}::${entry.token}`;
   return `${entry.path}:${entry.line}:${entry.column}:${entry.token}`;
 }
 
@@ -277,7 +311,7 @@ function auditSourceOccurrences(allowlist: Allowlist): void {
   for (const occurrence of expected) {
     const entry = checked.get(occurrenceKey(occurrence));
     if (!entry) {
-      failures.push(`${occurrence.path}:${occurrence.line}:${occurrence.column} ${occurrence.token} is not allowlisted`);
+      failures.push(`${occurrenceKey(occurrence)} is not allowlisted`);
       continue;
     }
     if (!entry.class || !entry.reason || !entry.location) {
