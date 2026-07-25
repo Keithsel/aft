@@ -6,7 +6,10 @@ use tree_sitter::{Node, Tree};
 
 const RUBY_REQUIRE_KIND: &str = "require";
 const RUBY_REQUIRE_RELATIVE_KIND: &str = "require_relative";
-const RUBY_LOAD_KIND: &str = "load";
+/// Ruby's `load` re-runs the target every call, unlike the idempotent
+/// `require` family — organize must never drop a repeat as a duplicate.
+/// Exported so the organizer names this form rather than matching a literal.
+pub(crate) const RUBY_LOAD_KIND: &str = "load";
 const RUBY_QUOTE_SINGLE: &str = "quote:single";
 const RUBY_QUOTE_DOUBLE: &str = "quote:double";
 

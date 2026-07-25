@@ -225,14 +225,14 @@ impl AllocatorMemorySnapshot {
 pub struct ProcessMemorySnapshot {
     pub rss_status: &'static str,
     pub rss_bytes: Option<u64>,
-    /// Kernel physical footprint (macOS `phys_footprint`): dirty + compressed
-    /// + IOKit pages, excluding clean/reclaimable ones. This is the number
+    /// Kernel physical footprint (macOS `phys_footprint`): dirty + compressed +
+    /// IOKit pages, excluding clean/reclaimable ones. This is the number
     /// Activity Monitor's "Real Memory" and the OOM killer use. RSS counts
     /// MADV_FREE pages the allocator has already surrendered (the kernel
-    /// reclaims them lazily), so RSS can read gigabytes above what the
-    /// process actually holds — observed 5.1 GB RSS over a 610 MB footprint.
-    /// None on non-macOS platforms (Linux RSS does not have this skew;
-    /// MADV_FREE'd pages leave Linux RSS on reclaim, not on advice).
+    /// reclaims them lazily), so RSS can read gigabytes above what the process
+    /// actually holds — observed 5.1 GB RSS over a 610 MB footprint. None on
+    /// non-macOS platforms (Linux RSS does not have this skew; MADV_FREE'd
+    /// pages leave Linux RSS on reclaim, not on advice).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phys_footprint_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]

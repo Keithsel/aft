@@ -25,7 +25,7 @@ pub(crate) use php::{
     php_grouped_use_matches_module, php_grouped_use_shares_prefix, php_import_matches_module,
     rewrite_php_import_without_module,
 };
-mod ruby;
+pub(crate) mod ruby;
 mod scala;
 pub(crate) use scala::scala_block_uses_scala2_dialect;
 mod swift;

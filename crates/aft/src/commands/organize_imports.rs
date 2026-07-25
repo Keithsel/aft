@@ -792,13 +792,19 @@ fn organize_raw_preserving_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImp
     (organized, removed)
 }
 
+/// True for import forms whose semantics are "execute the target again".
+/// Deduplicating these changes program behavior rather than tidying source, so
+/// they bypass the dedup pass entirely. Ruby `load` is the only such form
+/// modeled today (`require`/`require_relative` are idempotent and still dedupe;
+/// Lua `dofile` and Perl `do FILE` are unmodeled). A future re-executing form
+/// joins by adding its kind constant here.
 fn import_form_reexecutes_target(form: &ImportForm) -> bool {
     matches!(
         form,
         ImportForm::Structured {
             import_kind: Some(import_kind),
             ..
-        } if import_kind == "load"
+        } if import_kind == crate::imports::ruby::RUBY_LOAD_KIND
     )
 }
 
