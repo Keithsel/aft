@@ -663,6 +663,40 @@ mod tests {
         );
     }
 
+    /// An external path outside the project must produce an external_directory
+    /// ask. The sibling tests all assert that specific paths do NOT produce one
+    /// (device files, /dev/null, temp dirs), so deleting the ask entirely — as
+    /// opposed to inverting the guard that suppresses it — satisfies every one
+    /// of them. Guards have two failure directions and only the suppression
+    /// direction was covered here.
+    // Unix-only: the target must be outside BOTH the project and the system
+    // temp tree (tempfile roots live under the temp tree, which is exempt by
+    // design), and /etc is the portable Unix path that satisfies both.
+    #[cfg(unix)]
+    #[test]
+    fn external_path_outside_the_project_still_asks() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(&project_root).unwrap();
+
+        let ctx = AppContext::new(
+            Box::new(crate::parser::TreeSitterProvider::new()),
+            crate::config::Config {
+                project_root: Some(project_root.clone()),
+                bash_permissions: true,
+                ..crate::config::Config::default()
+            },
+        );
+
+        let asks = scan_with_cwd("cat /etc/hosts", &ctx, &project_root);
+
+        assert!(
+            asks.iter()
+                .any(|ask| matches!(ask.kind, PermissionKind::ExternalDirectory)),
+            "reading outside the project must require an external_directory ask: {asks:?}"
+        );
+    }
+
     /// A scanner stubbed to one blanket ask must fail this, which is what the
     /// sibling absence assertions cannot detect alone: every vector in this
     /// module expects an ask, so a constant-ask implementation satisfies all of
