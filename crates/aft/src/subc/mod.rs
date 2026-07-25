@@ -5982,6 +5982,43 @@ mod tests {
         );
     }
 
+    /// The table above proves `trust_for_principal` maps correctly, and the
+    /// test above proves the `fed:` harness override wins — but neither
+    /// exercises the ordinary path, so an implementation that ignored the
+    /// principal entirely for non-fed harnesses would satisfy both. Pin the
+    /// delegation itself: on a normal harness the verdict must still come from
+    /// the principal, in both directions.
+    #[test]
+    fn trust_for_bind_delegates_to_the_principal_on_ordinary_harnesses() {
+        for harness in ["opencode", "pi", "runner", "mcp:claude"] {
+            assert_eq!(
+                trust_for_bind(harness, &Some(Principal::Direct)),
+                BindTrust::FirstParty,
+                "a direct principal must stay first-party on {harness}"
+            );
+            assert_eq!(
+                trust_for_bind(harness, &Some(Principal::Unverified)),
+                BindTrust::Untrusted,
+                "an unverified principal must stay untrusted on {harness}"
+            );
+            assert_eq!(
+                trust_for_bind(harness, &None),
+                BindTrust::Untrusted,
+                "an absent principal must fail closed on {harness}"
+            );
+            assert_eq!(
+                trust_for_bind(
+                    harness,
+                    &Some(Principal::Reserved {
+                        module_id: "subc-mcp".to_string(),
+                    })
+                ),
+                BindTrust::Untrusted,
+                "a non-allowlisted reserved module must stay untrusted on {harness}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn persistent_cancel_resolves_when_fired_before_await() {
         // The lost-wakeup guard: cancel() fires exactly once via notify_waiters()

@@ -613,6 +613,15 @@ mod tests {
             "Expected no external directory asks for /dev/null redirect, got: {:?}",
             external_asks
         );
+        // The absence above is only meaningful if the scanner is discriminating
+        // rather than silent: a scanner stubbed to return nothing would satisfy
+        // it. Pin the positive half — the command itself stays gated.
+        assert!(
+            asks.iter()
+                .any(|ask| matches!(ask.kind, PermissionKind::Bash)
+                    && ask.patterns.iter().any(|pattern| pattern.contains("echo"))),
+            "the echo command must still produce a command-specific bash ask: {asks:?}"
+        );
     }
 
     #[test]
@@ -640,6 +649,63 @@ mod tests {
             external_asks.is_empty(),
             "Expected no external directory asks for /dev/stderr redirect, got: {:?}",
             external_asks
+        );
+        // See dev_null_redirect_does_not_trigger_permission_ask: pin the
+        // positive half so a silent scanner cannot satisfy the absence.
+        assert!(
+            asks.iter()
+                .any(|ask| matches!(ask.kind, PermissionKind::Bash)
+                    && ask
+                        .patterns
+                        .iter()
+                        .any(|pattern| pattern.contains("some-command"))),
+            "the command must still produce a command-specific bash ask: {asks:?}"
+        );
+    }
+
+    /// A scanner stubbed to one blanket ask must fail this, which is what the
+    /// sibling absence assertions cannot detect alone: every vector in this
+    /// module expects an ask, so a constant-ask implementation satisfies all of
+    /// them. Discriminating behavior is the property under test — different
+    /// commands, different asks.
+    #[test]
+    fn scanner_discriminates_between_commands_rather_than_asking_blanket() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(&project_root).unwrap();
+
+        let ctx = AppContext::new(
+            Box::new(crate::parser::TreeSitterProvider::new()),
+            crate::config::Config {
+                project_root: Some(project_root.clone()),
+                bash_permissions: true,
+                ..crate::config::Config::default()
+            },
+        );
+
+        let git = scan_with_cwd("git status", &ctx, &project_root);
+        let echo = scan_with_cwd("echo hello", &ctx, &project_root);
+
+        let patterns = |asks: &[PermissionAsk]| {
+            asks.iter()
+                .flat_map(|ask| ask.patterns.clone())
+                .collect::<Vec<_>>()
+        };
+        let git_patterns = patterns(&git);
+        let echo_patterns = patterns(&echo);
+
+        assert_ne!(
+            git_patterns, echo_patterns,
+            "different commands must yield different asks; identical patterns mean the \
+             scanner is not reading the command: git={git_patterns:?} echo={echo_patterns:?}"
+        );
+        assert!(
+            git_patterns.iter().any(|pattern| pattern.contains("git")),
+            "the git ask must name git: {git_patterns:?}"
+        );
+        assert!(
+            !git_patterns.iter().any(|pattern| pattern == "*"),
+            "a well-formed command must not fall back to the wildcard ask: {git_patterns:?}"
         );
     }
 }
