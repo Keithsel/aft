@@ -8,9 +8,27 @@
   "entries": [
     {
       "path": "ARCHITECTURE.md",
+      "location": "line 48, column 90",
+      "line": 48,
+      "column": 90,
+      "token": "filePath",
+      "class": "internal-compatibility",
+      "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
+    },
+    {
+      "path": "ARCHITECTURE.md",
       "location": "line 55, column 114",
       "line": 55,
       "column": 114,
+      "token": "filePath",
+      "class": "internal-compatibility",
+      "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
+    },
+    {
+      "path": "STRUCTURE.md",
+      "location": "line 117, column 53",
+      "line": 117,
+      "column": 53,
       "token": "filePath",
       "class": "internal-compatibility",
       "reason": "The spelling is an internal variable, payload, migration, or historical compatibility reference."
