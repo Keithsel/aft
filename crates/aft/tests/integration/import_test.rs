@@ -1520,6 +1520,62 @@ fn organize_imports_preserves_side_effect_order() {
 }
 
 #[test]
+fn organize_imports_preserves_c_and_cpp_textual_include_order() {
+    let mut aft = AftProcess::spawn();
+
+    for (extension, request_id) in [("c", "org-c-order"), ("cpp", "org-cpp-order")] {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("setup.h"), "#define FEATURE_READY 1\n").unwrap();
+        fs::write(
+            dir.path().join("reader.h"),
+            "#ifdef FEATURE_READY\n#define RESULT 2\n#else\n#define RESULT 1\n#endif\n",
+        )
+        .unwrap();
+
+        let file = dir.path().join(format!("main.{extension}"));
+        let original = "#include \"setup.h\"\n\n#include <reader.h>\n#include <stdio.h>\n\nint observed = RESULT;\n";
+        fs::write(&file, original).unwrap();
+
+        let resp = send_organize_imports(&mut aft, request_id, &file.display().to_string());
+        assert_eq!(resp["success"], true, "organize should succeed: {resp:?}");
+        assert_eq!(resp["removed_duplicates"], 0);
+        assert_eq!(resp["syntax_valid"], true);
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            original,
+            "textual includes must retain source order for {extension}"
+        );
+    }
+
+    aft.shutdown();
+}
+
+#[test]
+fn organize_imports_python_still_sorts_and_deduplicates() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("sorting_control.py");
+    fs::write(
+        &file,
+        "import requests\nimport os\nimport os\n\ndef main():\n    pass\n",
+    )
+    .unwrap();
+
+    let resp = send_organize_imports(&mut aft, "org-python-control", &file.display().to_string());
+    assert_eq!(resp["success"], true, "organize should succeed: {resp:?}");
+    assert_eq!(resp["removed_duplicates"], 1);
+
+    let content = fs::read_to_string(&file).unwrap();
+    assert_eq!(content.matches("import os").count(), 1);
+    assert!(
+        content.find("import os").unwrap() < content.find("import requests").unwrap(),
+        "Python must remain in the sorting path:\n{content}"
+    );
+
+    aft.shutdown();
+}
+
+#[test]
 fn organize_imports_ruby_preserves_reexecuting_loads_but_deduplicates_requires() {
     let mut aft = AftProcess::spawn();
     let dir = tempfile::tempdir().unwrap();

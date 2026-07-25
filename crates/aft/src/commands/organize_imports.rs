@@ -587,9 +587,18 @@ fn organize_import_refs(
 }
 
 fn preserves_side_effect_order(lang: LangId) -> bool {
+    // C/C++ includes textually expand under the preprocessor state at their
+    // source position. Include guards are optional, so both reordering and
+    // deduplicating directives can change the compiled program.
     matches!(
         lang,
-        LangId::TypeScript | LangId::Tsx | LangId::JavaScript | LangId::Vue | LangId::Lua
+        LangId::TypeScript
+            | LangId::Tsx
+            | LangId::JavaScript
+            | LangId::Vue
+            | LangId::Lua
+            | LangId::C
+            | LangId::Cpp
     )
 }
 
