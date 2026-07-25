@@ -608,16 +608,24 @@ fn background_kill_terminates_shell_process_group_grandchild() {
     let command = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
 
     let task_id = spawn_bg(&mut aft, "spawn-kill-pgroup", &command);
+    // `> file` creates the file before the shell writes into it, so existence
+    // is not proof the pid is readable yet: a read landing in that window
+    // returns "" and the parse fails. Wait for parseable content instead.
     let started = Instant::now();
-    while !pid_file.exists() {
-        assert!(started.elapsed() < Duration::from_secs(2));
+    let pid: i32 = loop {
+        if let Some(pid) = std::fs::read_to_string(&pid_file)
+            .ok()
+            .and_then(|contents| contents.trim().parse::<i32>().ok())
+        {
+            break pid;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "background shell never wrote a readable pid to {}",
+            pid_file.display()
+        );
         std::thread::sleep(Duration::from_millis(50));
-    }
-    let pid: i32 = std::fs::read_to_string(&pid_file)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
+    };
 
     let killed = aft.send(
         &json!({
