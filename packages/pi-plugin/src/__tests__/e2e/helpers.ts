@@ -501,14 +501,20 @@ export async function copyFixturesToTempDir(
 }
 
 async function prepareBinaryOnce(): Promise<PreparedBinary> {
+  // Every binary this returns is about to be spawned under short per-spawn
+  // timeouts, so pay macOS's one-time exec assessment here instead of inside
+  // the first timed test. See warmMacosExec.
   if (await isExecutable(TARGET_DEBUG_BINARY)) {
+    await warmMacosExec(TARGET_DEBUG_BINARY);
     return { binaryPath: TARGET_DEBUG_BINARY };
   }
   const build = await runCargoBuild();
   if (await isExecutable(TARGET_DEBUG_BINARY)) {
+    await warmMacosExec(TARGET_DEBUG_BINARY);
     return { binaryPath: TARGET_DEBUG_BINARY };
   }
   if (await isExecutable(FALLBACK_BINARY)) {
+    await warmMacosExec(FALLBACK_BINARY);
     return { binaryPath: FALLBACK_BINARY };
   }
   const skipReason = build.ok

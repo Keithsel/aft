@@ -13,6 +13,7 @@ import {
   setActiveLogger,
 } from "@cortexkit/aft-bridge";
 import { hermeticGitChildEnv } from "../../../../../tests/helpers/git-env.js";
+import { warmMacosExec } from "../../../../../tests/helpers/macos-exec-warm.js";
 import {
   type PreparedSubcLane,
   prepareSubcLane,
@@ -746,8 +747,12 @@ function fallbackBinaryCandidates(): string[] {
 }
 
 async function prepareBinaryOnce(): Promise<PreparedBinary> {
+  // Every binary this returns is about to be spawned under short per-spawn
+  // timeouts, so pay macOS's one-time exec assessment here instead of inside
+  // the first timed test. See warmMacosExec.
   const existing = await resolveAftBinaryPath(debugBinaryCandidates());
   if (existing) {
+    await warmMacosExec(existing);
     return {
       binaryPath: existing,
       source: "target",
@@ -758,6 +763,7 @@ async function prepareBinaryOnce(): Promise<PreparedBinary> {
   const build = await runCargoBuild();
   const built = await resolveAftBinaryPath(debugBinaryCandidates());
   if (built) {
+    await warmMacosExec(built);
     return {
       binaryPath: built,
       source: "target",
@@ -767,6 +773,7 @@ async function prepareBinaryOnce(): Promise<PreparedBinary> {
 
   const fallback = await resolveAftBinaryPath(fallbackBinaryCandidates());
   if (fallback) {
+    await warmMacosExec(fallback);
     return {
       binaryPath: fallback,
       source: "fallback",
