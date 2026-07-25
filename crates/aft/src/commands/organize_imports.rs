@@ -689,6 +689,24 @@ struct OrganizedImport {
 }
 
 /// Organize a group of non-Rust imports: sort by module path, deduplicate.
+///
+/// Sorting ESM value imports is not semantically free: modules evaluate in the
+/// order they are first requested, so reordering two imports of side-effecting
+/// modules changes initialization order. That is a deliberate accepted cost,
+/// not an oversight — every mainstream JS organizer sorts value imports the
+/// same way (verified against Biome, which reorders an identical fixture), so
+/// pinning them here would make AFT the only tool that silently declines to
+/// organize a JS file, and would break the far commoner case of a developer
+/// wanting tidy imports in a codebase of side-effect-free modules.
+///
+/// The escape hatch is the one the language itself provides and the one those
+/// tools honour: a bare `import "./x.js"` is a side-effect import, which this
+/// organizer already treats as a hard ordering barrier. Code that depends on
+/// evaluation order should express it that way.
+///
+/// Languages whose EVERY import form is order-dependent (C/C++ textual
+/// includes) are excluded from this path entirely — see
+/// `preserves_side_effect_order`.
 fn organize_generic_group(
     imps: &[&ImportStatement],
     _lang: LangId,
