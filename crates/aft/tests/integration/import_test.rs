@@ -1567,6 +1567,63 @@ fn organize_imports_ruby_preserves_reexecuting_loads_but_deduplicates_requires()
 }
 
 #[test]
+fn organize_imports_perl_preserves_reexecuting_use_and_no_but_deduplicates_require() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+
+    let use_file = dir.path().join("repeated_use.pl");
+    fs::write(&use_file, "use Probe;\nuse Probe;\n\nprint 'done';\n").unwrap();
+    let use_resp = send_organize_imports(&mut aft, "org-perl-use", &use_file.display().to_string());
+    assert_eq!(
+        use_resp["success"], true,
+        "organize should succeed: {use_resp:?}"
+    );
+    let use_content = fs::read_to_string(&use_file).unwrap();
+    assert_eq!(
+        use_content.matches("use Probe;").count(),
+        2,
+        "each Perl use must survive organization:\n{use_content}"
+    );
+    assert_eq!(use_resp["removed_duplicates"], 0);
+
+    let no_file = dir.path().join("repeated_no.pl");
+    fs::write(&no_file, "no Unimp;\nno Unimp;\n\nprint 'done';\n").unwrap();
+    let no_resp = send_organize_imports(&mut aft, "org-perl-no", &no_file.display().to_string());
+    assert_eq!(
+        no_resp["success"], true,
+        "organize should succeed: {no_resp:?}"
+    );
+    let no_content = fs::read_to_string(&no_file).unwrap();
+    assert_eq!(
+        no_content.matches("no Unimp;").count(),
+        2,
+        "each Perl no must survive organization:\n{no_content}"
+    );
+    assert_eq!(no_resp["removed_duplicates"], 0);
+
+    let require_file = dir.path().join("repeated_require.pl");
+    fs::write(
+        &require_file,
+        "require Probe;\nrequire Probe;\n\nprint 'done';\n",
+    )
+    .unwrap();
+    let require_resp = send_organize_imports(
+        &mut aft,
+        "org-perl-require",
+        &require_file.display().to_string(),
+    );
+    assert_eq!(
+        require_resp["success"], true,
+        "organize should succeed: {require_resp:?}"
+    );
+    let require_content = fs::read_to_string(&require_file).unwrap();
+    assert_eq!(require_content.matches("require Probe;").count(), 1);
+    assert_eq!(require_resp["removed_duplicates"], 1);
+
+    aft.shutdown();
+}
+
+#[test]
 fn organize_imports_preserves_inter_import_comments() {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);

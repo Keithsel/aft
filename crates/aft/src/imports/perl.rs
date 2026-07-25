@@ -4,9 +4,9 @@ use super::{
 };
 use tree_sitter::{Node, Tree};
 
-const PERL_USE_KIND: &str = "use";
+pub(crate) const PERL_USE_KIND: &str = "use";
 const PERL_REQUIRE_KIND: &str = "require";
-const PERL_NO_KIND: &str = "no";
+pub(crate) const PERL_NO_KIND: &str = "no";
 const PERL_FLAT_MARKER_PREFIX: &str = "perl:";
 
 pub(crate) fn classify_group_perl(_module_path: &str) -> ImportGroup {

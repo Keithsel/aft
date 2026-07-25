@@ -19,7 +19,7 @@ mod csharp;
 mod java;
 mod kotlin;
 mod lua;
-mod perl;
+pub(crate) mod perl;
 mod php;
 pub(crate) use php::{
     php_grouped_use_matches_module, php_grouped_use_shares_prefix, php_import_matches_module,

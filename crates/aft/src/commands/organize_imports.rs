@@ -573,7 +573,7 @@ fn organize_import_refs(
         let (organized, removed) = if matches!(lang, LangId::Rust) {
             organize_rust_group(imps)
         } else if should_preserve_raw_on_organize(lang) {
-            organize_raw_preserving_group(imps)
+            organize_raw_preserving_group(imps, lang)
         } else {
             organize_generic_group(imps, lang)
         };
@@ -745,7 +745,10 @@ fn organize_generic_group(
     (organized, removed)
 }
 
-fn organize_raw_preserving_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImport>, usize) {
+fn organize_raw_preserving_group(
+    imps: &[&ImportStatement],
+    lang: LangId,
+) -> (Vec<OrganizedImport>, usize) {
     use std::collections::HashSet;
 
     let mut seen: HashSet<String> = HashSet::new();
@@ -759,7 +762,7 @@ fn organize_raw_preserving_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImp
             continue;
         }
 
-        if !import_form_reexecutes_target(&imp.form) {
+        if !import_form_reexecutes_target(lang, &imp.form) {
             let key = raw_preserving_dedup_key(imp);
             if !seen.insert(key) {
                 removed += 1;
@@ -792,20 +795,30 @@ fn organize_raw_preserving_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImp
     (organized, removed)
 }
 
-/// True for import forms whose semantics are "execute the target again".
-/// Deduplicating these changes program behavior rather than tidying source, so
-/// they bypass the dedup pass entirely. Ruby `load` is the only such form
-/// modeled today (`require`/`require_relative` are idempotent and still dedupe;
-/// Lua `dofile` and Perl `do FILE` are unmodeled). A future re-executing form
-/// joins by adding its kind constant here.
-fn import_form_reexecutes_target(form: &ImportForm) -> bool {
-    matches!(
-        form,
-        ImportForm::Structured {
-            import_kind: Some(import_kind),
-            ..
-        } if import_kind == crate::imports::ruby::RUBY_LOAD_KIND
-    )
+/// True for import forms that invoke user code on every occurrence.
+/// Deduplicating these forms changes program behavior even when their underlying
+/// module loader is idempotent, so they bypass the dedup pass entirely.
+fn import_form_reexecutes_target(lang: LangId, form: &ImportForm) -> bool {
+    match (lang, form) {
+        (
+            LangId::Ruby,
+            ImportForm::Structured {
+                import_kind: Some(import_kind),
+                ..
+            },
+        ) => import_kind == crate::imports::ruby::RUBY_LOAD_KIND,
+        (
+            LangId::Perl,
+            ImportForm::Structured {
+                import_kind: Some(import_kind),
+                ..
+            },
+        ) => matches!(
+            import_kind.as_str(),
+            crate::imports::perl::PERL_USE_KIND | crate::imports::perl::PERL_NO_KIND
+        ),
+        _ => false,
+    }
 }
 
 fn raw_preserving_dedup_key(imp: &ImportStatement) -> String {
