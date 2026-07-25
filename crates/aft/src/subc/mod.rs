@@ -4415,6 +4415,44 @@ pub(crate) mod test_support {
         }
     }
 
+    /// Sweep until `root` is forgotten, mirroring how production reaps.
+    ///
+    /// `reap_idle_roots` probes actor idleness with a try-lock and retains the
+    /// root when the scheduler holds that lock — correct behavior, since the
+    /// real caller sweeps on a timer and simply catches the root next tick. A
+    /// test that asserts a single sweep succeeds is therefore asserting it wins
+    /// a lock race that nothing in production depends on: `register_actor` wakes
+    /// the scheduler, which grabs the same lock, and on a loaded runner that
+    /// window is wide enough to lose. Sweep to the outcome instead.
+    pub(super) fn reap_until_forgotten(
+        root: &ProjectRootId,
+        live_roots: &mut HashMap<ProjectRootId, RootMeta>,
+        pending_binds: &HashMap<RouteChannel, PendingBind>,
+        root_channels: &HashMap<ProjectRootId, HashSet<RouteChannel>>,
+        executor: &Arc<Executor>,
+        metrics: &DispatchPathMetrics,
+    ) -> IdleReapOutcome {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let outcome = reap_idle_roots(
+                Instant::now(),
+                live_roots,
+                pending_binds,
+                root_channels,
+                executor,
+                metrics,
+            );
+            if outcome.forgotten_deleted_roots.contains(root) {
+                return outcome;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "deleted root was never forgotten: {root:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     pub(super) fn wait_for_actor_root_count(app: &App, expected: usize) {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
@@ -4563,8 +4601,8 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::test_support::{
-        completion_frame, route_identity, test_ctx, test_root, wait_for_actor_root_count,
-        wait_for_watcher_count,
+        completion_frame, reap_until_forgotten, route_identity, test_ctx, test_root,
+        wait_for_actor_root_count, wait_for_watcher_count,
     };
     use super::*;
 
@@ -5158,8 +5196,8 @@ mod tests {
         let mut meta = RootMeta::new(Instant::now());
         meta.unbound_quiesced = true;
         let mut live_roots = HashMap::from([(root.clone(), meta)]);
-        let outcome = reap_idle_roots(
-            Instant::now(),
+        let outcome = reap_until_forgotten(
+            &root,
             &mut live_roots,
             &HashMap::new(),
             &HashMap::new(),
@@ -5247,8 +5285,8 @@ mod tests {
 
         root_dir.close().expect("delete project root");
         let metrics = DispatchPathMetrics::new();
-        let outcome = reap_idle_roots(
-            Instant::now(),
+        let outcome = reap_until_forgotten(
+            &root,
             &mut live_roots,
             &pending_binds,
             &root_channels,

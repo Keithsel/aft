@@ -243,18 +243,23 @@ mod tests {
 
         let wrapper_pid = child.id();
         let started = Instant::now();
-        while !pid_file.exists() {
+        // Wait for parseable CONTENT, not mere existence: the shell's `>`
+        // redirect creates the file before `echo` writes into it, so an
+        // existence check can win the race against an empty file and fail the
+        // parse. Under a loaded machine that window is wide enough to hit.
+        let grandchild_pid: u32 = loop {
+            if let Some(pid) = std::fs::read_to_string(&pid_file)
+                .ok()
+                .and_then(|contents| contents.trim().parse::<u32>().ok())
+            {
+                break pid;
+            }
             assert!(
-                started.elapsed() < Duration::from_secs(2),
-                "timed out waiting for grandchild pid file"
+                started.elapsed() < Duration::from_secs(5),
+                "timed out waiting for a parseable grandchild pid file"
             );
-            thread::sleep(Duration::from_millis(50));
-        }
-        let grandchild_pid: u32 = std::fs::read_to_string(&pid_file)
-            .expect("read grandchild pid")
-            .trim()
-            .parse()
-            .expect("parse grandchild PID");
+            thread::sleep(Duration::from_millis(20));
+        };
 
         assert!(process_running(wrapper_pid), "wrapper should be running");
         assert!(
