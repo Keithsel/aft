@@ -415,6 +415,23 @@ struct ToolResponseEnvelope<'a> {
     include_structured: bool,
 }
 
+// A trusted envelope carries the rendered text twice — once as the outer MCP
+// `content`, once inside `structuredContent` — and for reads the raw `content`
+// data field rides along a third time, so a read body crosses the connection
+// roughly 3x. This is deliberate, not an oversight: the bridge re-lifts
+// `structuredContent` to reconstruct the flat response, and dropping the
+// duplicate is a forward-incompatible wire change (`reliftReply` rejects a
+// reply without `structuredContent.text`, so a module-first rollout breaks
+// every installed plugin). Collapsing it safely means emitting both shapes,
+// waiting for plugins to update, then dropping one behind a version floor.
+//
+// Measured on a live daemon: the largest real frames were ~200 KB, with zero
+// egress-write time, writer queue depth 1, never full, and no reserve
+// timeouts — the amplification costs nothing observable. Revisit if
+// `egress_write` on tool-call phase traces becomes nonzero, if the writer
+// queue starts backing up, or if typical frames grow well past a few hundred
+// KB; at that point the two-step migration earns its risk.
+
 impl Serialize for ToolResponseEnvelope<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
