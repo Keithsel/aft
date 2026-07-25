@@ -1,5 +1,5 @@
 use crate as aft;
-use crate::callgraph_store::CallGraphStore;
+use crate::callgraph_store::{invalidates_workspace_crate_prefix_cache, CallGraphStore};
 use crate::context::{
     AppContext, CallGraphStoreBuildEvent, SemanticIndexEvent, SemanticIndexStatus,
     SemanticRefreshEvent, SemanticRefreshRequest, WatcherDrainApplyPhase, WatcherDrainPhase,
@@ -601,7 +601,10 @@ pub fn drain_callgraph_store_events(ctx: &AppContext) {
                 pending = ctx
                     .take_pending_callgraph_store_paths()
                     .into_iter()
-                    .filter(|path| !watcher_path_is_generated_for_callgraph(ctx, path))
+                    .filter(|path| {
+                        invalidates_workspace_crate_prefix_cache(path)
+                            || !watcher_path_is_generated_for_callgraph(ctx, path)
+                    })
                     .collect();
                 true
             } else {
@@ -1837,21 +1840,22 @@ pub fn refresh_callgraph_store_for_watcher(
     if !ctx.heavy_root_work_allowed() {
         return;
     }
-    let source_paths = changed
+    let refresh_paths = changed
         .iter()
         .filter(|path| {
-            watcher_path_is_callgraph_indexed(path)
-                && !watcher_path_is_generated_for_callgraph(ctx, path)
+            invalidates_workspace_crate_prefix_cache(path)
+                || (watcher_path_is_callgraph_indexed(path)
+                    && !watcher_path_is_generated_for_callgraph(ctx, path))
         })
         .cloned()
         .collect::<Vec<_>>();
-    if source_paths.is_empty() {
+    if refresh_paths.is_empty() {
         return;
     }
     // This is intentionally the only watcher call-site action. Opening and
     // mutating SQLite belongs to the process-wide store worker, outside every
     // executor lane and its epoch gate.
-    ctx.enqueue_callgraph_store_refresh(source_paths);
+    ctx.enqueue_callgraph_store_refresh(refresh_paths);
 }
 
 /// Drain pre-filtered watcher events and apply cache invalidations on the
@@ -1918,6 +1922,17 @@ fn apply_callgraph_watcher_phase(
     mut refresh: impl FnMut(&AppContext, &HashSet<PathBuf>),
 ) -> bool {
     let mut changed = HashSet::new();
+    if enabled {
+        // Include manifest invalidation before the budgeted path loop. If this
+        // phase yields before reaching Cargo.toml, an earlier source sub-batch
+        // must still discard the root's old workspace map before resolving refs.
+        changed.extend(
+            paths
+                .iter()
+                .filter(|path| invalidates_workspace_crate_prefix_cache(path))
+                .cloned(),
+        );
+    }
     let mut generated_skipped = 0usize;
     let completed = apply_watcher_path_phase(
         WatcherDrainApplyPhase::Callgraph,
@@ -1926,7 +1941,12 @@ fn apply_callgraph_watcher_phase(
         started,
         budget,
         |path| {
-            if enabled && watcher_path_is_callgraph_indexed(path) {
+            if !enabled {
+                return;
+            }
+            if invalidates_workspace_crate_prefix_cache(path) {
+                changed.insert(path.to_path_buf());
+            } else if watcher_path_is_callgraph_indexed(path) {
                 if watcher_path_is_generated_for_callgraph(ctx, path) {
                     generated_skipped += 1;
                 } else {
@@ -4303,6 +4323,7 @@ mod watcher_slice_tests {
             temp.path().join("b.ts"),
             generated,
             temp.path().join("ignored.txt"),
+            temp.path().join("Cargo.toml"),
         ]);
         let mut remaining = paths.len();
         let mut refreshed = Vec::new();
@@ -4320,7 +4341,36 @@ mod watcher_slice_tests {
         assert!(completed);
         assert_eq!(remaining, 0);
         assert_eq!(refreshed.len(), 1);
-        assert_eq!(refreshed[0].len(), 2);
+        assert_eq!(refreshed[0].len(), 3);
+        assert!(refreshed[0].contains(&temp.path().join("Cargo.toml")));
+    }
+
+    #[test]
+    fn callgraph_phase_includes_manifest_before_budget_yield() {
+        let temp = tempfile::tempdir().unwrap();
+        let (ctx, _) = context_with_watcher(temp.path());
+        let source = temp.path().join("first.rs");
+        let manifest = temp.path().join("Cargo.toml");
+        let mut paths = VecDeque::from([source.clone(), manifest.clone()]);
+        let mut remaining = paths.len();
+        let mut refreshed = Vec::new();
+        set_watcher_unit_test_seam(Duration::from_millis(2), None);
+
+        let completed = apply_callgraph_watcher_phase(
+            &ctx,
+            &mut paths,
+            &mut remaining,
+            Instant::now(),
+            Duration::from_millis(1),
+            true,
+            |_, changed| refreshed.push(changed.clone()),
+        );
+        clear_watcher_unit_test_seam();
+
+        assert!(!completed);
+        assert_eq!(remaining, 1);
+        assert_eq!(refreshed.len(), 1);
+        assert_eq!(refreshed[0], HashSet::from([source, manifest]));
     }
 
     #[test]

@@ -284,6 +284,17 @@ pub struct CallGraphStoreOptions {
 
 pub type PendingCallGraphStorePaths = Arc<parking_lot::Mutex<BTreeSet<PathBuf>>>;
 
+type WorkspaceCratePrefixes = HashMap<String, String>;
+
+#[derive(Clone, Debug, Default)]
+struct WorkspaceCratePrefixCache(Arc<OnceLock<WorkspaceCratePrefixes>>);
+
+const REFRESH_WORKSPACE_CACHE_ROOT_CAP: usize = 128;
+
+pub(crate) fn invalidates_workspace_crate_prefix_cache(path: &Path) -> bool {
+    path.file_name().and_then(|name| name.to_str()) == Some("Cargo.toml")
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct RefreshRoot {
     callgraph_dir: PathBuf,
@@ -606,6 +617,9 @@ pub fn flush_callgraph_store_refreshes_with_budget(budget: Duration) -> bool {
 }
 
 fn callgraph_refresh_worker_loop(shared: &RefreshWorkerShared) {
+    // The worker owns these caches so maps are shared only by refreshes for the
+    // same canonical root and disappear when the worker shuts down.
+    let mut workspace_crate_prefixes = HashMap::new();
     loop {
         let batch = {
             let mut queue = shared
@@ -631,7 +645,7 @@ fn callgraph_refresh_worker_loop(shared: &RefreshWorkerShared) {
             }
         };
 
-        process_callgraph_refresh_batch(&batch);
+        process_callgraph_refresh_batch(&batch, &mut workspace_crate_prefixes);
 
         let mut queue = shared
             .queue
@@ -642,7 +656,21 @@ fn callgraph_refresh_worker_loop(shared: &RefreshWorkerShared) {
     }
 }
 
-fn process_callgraph_refresh_batch(batch: &RefreshBatch) {
+fn process_callgraph_refresh_batch(
+    batch: &RefreshBatch,
+    workspace_crate_prefixes: &mut HashMap<RefreshRoot, WorkspaceCratePrefixCache>,
+) {
+    // A manifest event is an invalidation signal, not a source file to parse.
+    // Drop the root's map even for a superseded batch: the filesystem changed,
+    // and a later configure must never inherit crate membership from before it.
+    if batch
+        .paths
+        .iter()
+        .any(|path| invalidates_workspace_crate_prefix_cache(path))
+    {
+        workspace_crate_prefixes.remove(&batch.root);
+    }
+
     if batch
         .ticket
         .as_ref()
@@ -653,7 +681,17 @@ fn process_callgraph_refresh_batch(batch: &RefreshBatch) {
         batch.defer();
         return;
     }
-    let paths = batch.paths.iter().cloned().collect::<Vec<_>>();
+    let paths = batch
+        .paths
+        .iter()
+        .filter(|path| crate::parser::detect_language(path).is_some())
+        .cloned()
+        .collect::<Vec<_>>();
+    if paths.is_empty() {
+        return;
+    }
+    let workspace_crate_prefix_cache =
+        workspace_crate_prefix_cache_for_root(workspace_crate_prefixes, &batch.root);
     let _watchdog = RefreshWorkerWatchdog::start(&paths);
     let store = match CallGraphStore::open_ready(
         batch.root.callgraph_dir.clone(),
@@ -705,12 +743,24 @@ fn process_callgraph_refresh_batch(batch: &RefreshBatch) {
                     ticket.lifecycle.clone(),
                     Arc::clone(&ticket.generation_flag),
                     ticket.expected_generation,
-                    || store.refresh_files(&paths).map(|_| ()),
+                    || {
+                        store
+                            .refresh_files_with_workspace_crate_prefix_cache(
+                                &paths,
+                                workspace_crate_prefix_cache.clone(),
+                            )
+                            .map(|_| ())
+                    },
                 )
             },
         )
     } else {
-        store.refresh_files(&paths).map(|_| ())
+        store
+            .refresh_files_with_workspace_crate_prefix_cache(
+                &paths,
+                workspace_crate_prefix_cache.clone(),
+            )
+            .map(|_| ())
     };
     if matches!(refresh_result, Err(CallGraphStoreError::Superseded)) {
         // The commit lost the fence race: a newer configure or publication
@@ -737,6 +787,19 @@ fn process_callgraph_refresh_batch(batch: &RefreshBatch) {
     } else {
         crate::logging::note_callgraph_invalidations(paths.len());
     }
+}
+
+fn workspace_crate_prefix_cache_for_root(
+    caches: &mut HashMap<RefreshRoot, WorkspaceCratePrefixCache>,
+    root: &RefreshRoot,
+) -> WorkspaceCratePrefixCache {
+    if !caches.contains_key(root) && caches.len() >= REFRESH_WORKSPACE_CACHE_ROOT_CAP {
+        // Eviction only costs a future rebuild; it cannot make resolution stale.
+        if let Some(evicted) = caches.keys().next().cloned() {
+            caches.remove(&evicted);
+        }
+    }
+    caches.entry(root.clone()).or_default().clone()
 }
 
 #[derive(Clone, Copy, Default)]
@@ -1324,18 +1387,19 @@ struct ProjectIndex<'a> {
     project_root: PathBuf,
     files: HashMap<String, DbFileIndex>,
     caller_data: HashMap<String, &'a FileCallData>,
-    /// Lazily-built `crate_name -> src prefix` map for Rust workspace resolution.
-    /// Built once (whole-tree walk) on first qualified-ref resolution and reused,
-    /// instead of re-walking the project per ref. Skipped entirely when no Rust
-    /// workspace ref is resolved (e.g. warm query path with no Rust changes).
-    workspace_crate_prefixes: std::sync::OnceLock<HashMap<String, String>>,
+    /// Root-scoped map shared by successive refresh-worker batches. Cargo.toml
+    /// watcher events replace the cache before another batch can resolve refs.
+    /// Cold/direct refreshes use a private cache so each refresh builds and uses
+    /// its own workspace mapping.
+    workspace_crate_prefixes: WorkspaceCratePrefixCache,
 }
 
 impl ProjectIndex<'_> {
     /// Resolve a crate name to its `src` prefix, building the workspace map on
-    /// first use. The map walks the project tree exactly once per index.
+    /// first use. Refresh-worker indexes for the same root share this cache.
     fn crate_src_prefix(&self, crate_name: &str) -> Option<String> {
         self.workspace_crate_prefixes
+            .0
             .get_or_init(|| build_workspace_crate_prefixes(&self.project_root))
             .get(crate_name)
             .cloned()
@@ -2242,7 +2306,12 @@ impl CallGraphStore {
             caller_data.insert(rel_path.clone(), &persistent_call_data[*idx]);
         }
         let indexed_caller_files = files_index.keys().cloned().collect::<BTreeSet<_>>();
-        let index = ProjectIndex::from_parts(&self.project_root, files_index, caller_data);
+        let index = ProjectIndex::from_parts(
+            &self.project_root,
+            files_index,
+            caller_data,
+            WorkspaceCratePrefixCache::default(),
+        );
 
         let mut resolved_refs = Vec::new();
         for (_, raw_refs) in all_raw_refs {
@@ -2297,7 +2366,21 @@ impl CallGraphStore {
     }
 
     pub fn refresh_files(&self, changed_files: &[PathBuf]) -> Result<IncrementalStats> {
-        let (stats, profile) = self.refresh_files_profiled(changed_files)?;
+        self.refresh_files_with_workspace_crate_prefix_cache(
+            changed_files,
+            WorkspaceCratePrefixCache::default(),
+        )
+    }
+
+    fn refresh_files_with_workspace_crate_prefix_cache(
+        &self,
+        changed_files: &[PathBuf],
+        workspace_crate_prefixes: WorkspaceCratePrefixCache,
+    ) -> Result<IncrementalStats> {
+        let (stats, profile) = self.refresh_files_profiled_with_workspace_crate_prefix_cache(
+            changed_files,
+            workspace_crate_prefixes,
+        )?;
         if std::env::var_os("AFT_BENCH_REFRESH_FILES").is_some() {
             eprintln!("refresh_files phases: {}", profile.report());
         }
@@ -2309,6 +2392,17 @@ impl CallGraphStore {
     pub fn refresh_files_profiled(
         &self,
         changed_files: &[PathBuf],
+    ) -> Result<(IncrementalStats, RefreshFilesProfile)> {
+        self.refresh_files_profiled_with_workspace_crate_prefix_cache(
+            changed_files,
+            WorkspaceCratePrefixCache::default(),
+        )
+    }
+
+    fn refresh_files_profiled_with_workspace_crate_prefix_cache(
+        &self,
+        changed_files: &[PathBuf],
+        workspace_crate_prefixes: WorkspaceCratePrefixCache,
     ) -> Result<(IncrementalStats, RefreshFilesProfile)> {
         let total_started = Instant::now();
         let mut profile = RefreshFilesProfile::default();
@@ -2461,7 +2555,12 @@ impl CallGraphStore {
         }
 
         let started = Instant::now();
-        let index = ProjectIndex::from_db_and_callers(&tx, &self.project_root, &caller_extracts)?;
+        let index = ProjectIndex::from_db_and_callers(
+            &tx,
+            &self.project_root,
+            &caller_extracts,
+            workspace_crate_prefixes,
+        )?;
         profile.index_load += started.elapsed();
         let started = Instant::now();
         for rel_path in &touched_callers {
@@ -6972,11 +7071,48 @@ fn rust_workspace_file_for_segments(index: &ProjectIndex<'_>, segments: &[&str])
     rust_file_for_src_prefix(index, &src_prefix, &module_segments)
 }
 
+#[cfg(test)]
+static WORKSPACE_CRATE_PREFIX_BUILD_COUNTS: OnceLock<Mutex<HashMap<PathBuf, usize>>> =
+    OnceLock::new();
+
+#[cfg(test)]
+fn note_workspace_crate_prefix_build(project_root: &Path) {
+    let mut counts = WORKSPACE_CRATE_PREFIX_BUILD_COUNTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("workspace crate prefix build counts mutex poisoned");
+    *counts.entry(project_root.to_path_buf()).or_default() += 1;
+}
+
+#[cfg(not(test))]
+fn note_workspace_crate_prefix_build(_project_root: &Path) {}
+
+#[cfg(test)]
+fn reset_workspace_crate_prefix_build_count(project_root: &Path) {
+    WORKSPACE_CRATE_PREFIX_BUILD_COUNTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("workspace crate prefix build counts mutex poisoned")
+        .remove(project_root);
+}
+
+#[cfg(test)]
+fn workspace_crate_prefix_build_count(project_root: &Path) -> usize {
+    WORKSPACE_CRATE_PREFIX_BUILD_COUNTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("workspace crate prefix build counts mutex poisoned")
+        .get(project_root)
+        .copied()
+        .unwrap_or(0)
+}
+
 /// Walk the project tree once and map every Rust crate name (package name with
 /// `-` normalized to `_`, plus any explicit `[lib] name`) to its `src` prefix.
 /// Replaces the previous per-ref tree walk: resolving 600k+ qualified refs no
 /// longer re-walks the filesystem once per ref.
 fn build_workspace_crate_prefixes(project_root: &Path) -> HashMap<String, String> {
+    note_workspace_crate_prefix_build(project_root);
     let mut prefixes = HashMap::new();
     let mut stack = vec![project_root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -7159,12 +7295,13 @@ impl<'a> ProjectIndex<'a> {
         project_root: &Path,
         files: HashMap<String, DbFileIndex>,
         caller_data: HashMap<String, &'a FileCallData>,
+        workspace_crate_prefixes: WorkspaceCratePrefixCache,
     ) -> Self {
         Self {
             project_root: project_root.to_path_buf(),
             files,
             caller_data,
-            workspace_crate_prefixes: std::sync::OnceLock::new(),
+            workspace_crate_prefixes,
         }
     }
 
@@ -7176,13 +7313,19 @@ impl<'a> ProjectIndex<'a> {
             caller_data.insert(extract.rel_path.clone(), &extract.data);
             files.insert(extract.rel_path.clone(), index);
         }
-        Self::from_parts(project_root, files, caller_data)
+        Self::from_parts(
+            project_root,
+            files,
+            caller_data,
+            WorkspaceCratePrefixCache::default(),
+        )
     }
 
     fn from_db_and_callers(
         tx: &Transaction<'_>,
         project_root: &Path,
         caller_extracts: &'a HashMap<String, FileExtract>,
+        workspace_crate_prefixes: WorkspaceCratePrefixCache,
     ) -> Result<Self> {
         let mut files = load_db_file_indexes(tx, project_root)?;
         let mut caller_data = HashMap::new();
@@ -7193,7 +7336,12 @@ impl<'a> ProjectIndex<'a> {
             );
             caller_data.insert(rel_path.clone(), &extract.data);
         }
-        Ok(Self::from_parts(project_root, files, caller_data))
+        Ok(Self::from_parts(
+            project_root,
+            files,
+            caller_data,
+            workspace_crate_prefixes,
+        ))
     }
 
     fn lang_for(&self, rel_path: &str) -> Option<LangId> {
@@ -10262,6 +10410,172 @@ mod refresh_worker_tests {
         }
     }
 
+    fn wait_for_refresh_worker_idle() {
+        let deadline = Instant::now() + Duration::from_secs(12);
+        loop {
+            let worker = CALLGRAPH_REFRESH_WORKER
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .expect("callgraph refresh worker mutex poisoned")
+                .clone();
+            let idle = worker.is_none_or(|worker| {
+                let queue = worker
+                    .shared
+                    .queue
+                    .lock()
+                    .expect("callgraph refresh queue mutex poisoned");
+                queue.active.is_none() && queue.order.is_empty()
+            });
+            if idle {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for callgraph refresh worker to become idle"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn workspace_refresh_fixture() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        let callgraph_dir = temp
+            .path()
+            .join("storage")
+            .join("callgraph")
+            .join(crate::search_index::artifact_cache_key(&root));
+        fs::create_dir_all(root.join("app/src")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"app\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("app/Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let caller = root.join("app/src/lib.rs");
+        fs::write(&caller, "pub fn run() { added_crate::target(); }\n").unwrap();
+        let (store, _) = CallGraphStore::cold_build_with_lease(
+            callgraph_dir.clone(),
+            root.clone(),
+            std::slice::from_ref(&caller),
+        )
+        .unwrap();
+        drop(store);
+        (temp, root, callgraph_dir, caller)
+    }
+
+    #[test]
+    fn refresh_worker_reuses_workspace_prefix_cache_for_one_root() {
+        let _guard = REFRESH_WORKER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = flush_callgraph_store_refreshes_with_budget(Duration::from_secs(30));
+        let (_temp, root, callgraph_dir, caller) = workspace_refresh_fixture();
+        reset_workspace_crate_prefix_build_count(&root);
+        set_callgraph_refresh_worker_test_seam(root.clone(), Duration::ZERO, false);
+
+        for revision in ["first", "second"] {
+            fs::write(
+                &caller,
+                format!("pub fn run() {{ added_crate::target(); }}\n// {revision}\n"),
+            )
+            .unwrap();
+            enqueue_callgraph_store_refresh(
+                callgraph_dir.clone(),
+                root.clone(),
+                vec![caller.clone()],
+                pending_paths(),
+            );
+            wait_for_refresh_worker_idle();
+        }
+
+        assert_eq!(workspace_crate_prefix_build_count(&root), 1);
+        assert!(flush_callgraph_store_refreshes_with_budget(
+            Duration::from_secs(5)
+        ));
+        clear_callgraph_refresh_worker_test_seam(&root);
+    }
+
+    #[test]
+    fn manifest_event_rebuilds_workspace_prefix_cache_and_resolves_new_crate() {
+        let _guard = REFRESH_WORKER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = flush_callgraph_store_refreshes_with_budget(Duration::from_secs(30));
+        let (_temp, root, callgraph_dir, caller) = workspace_refresh_fixture();
+        reset_workspace_crate_prefix_build_count(&root);
+        set_callgraph_refresh_worker_test_seam(root.clone(), Duration::ZERO, false);
+
+        fs::write(
+            &caller,
+            "pub fn run() { added_crate::target(); }\n// prime missing-crate map\n",
+        )
+        .unwrap();
+        enqueue_callgraph_store_refresh(
+            callgraph_dir.clone(),
+            root.clone(),
+            vec![caller.clone()],
+            pending_paths(),
+        );
+        wait_for_refresh_worker_idle();
+        assert_eq!(workspace_crate_prefix_build_count(&root), 1);
+
+        let added_manifest = root.join("added/Cargo.toml");
+        let added_source = root.join("added/src/lib.rs");
+        fs::create_dir_all(added_source.parent().unwrap()).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"app\", \"added\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        fs::write(
+            &added_manifest,
+            "[package]\nname = \"added-crate\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(&added_source, "pub fn target() {}\n").unwrap();
+        fs::write(
+            &caller,
+            "pub fn run() { added_crate::target(); }\n// resolve added crate\n",
+        )
+        .unwrap();
+
+        enqueue_callgraph_store_refresh(
+            callgraph_dir.clone(),
+            root.clone(),
+            vec![
+                root.join("Cargo.toml"),
+                added_manifest,
+                added_source,
+                caller,
+            ],
+            pending_paths(),
+        );
+        assert!(flush_callgraph_store_refreshes_with_budget(
+            Duration::from_secs(12)
+        ));
+
+        // This is the negative control for a permanently-static cache: without
+        // manifest invalidation the build count stays at one and the call remains
+        // unresolved because `added_crate` was absent when the map was primed.
+        assert_eq!(workspace_crate_prefix_build_count(&root), 2);
+        let store = CallGraphStore::open_readonly(callgraph_dir, root.clone())
+            .unwrap()
+            .expect("refreshed workspace store");
+        let tree = store
+            .call_tree(Path::new("app/src/lib.rs"), "run", 1)
+            .unwrap();
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].file, "added/src/lib.rs");
+        assert_eq!(tree.children[0].name, "target");
+        assert!(tree.children[0].resolved);
+        clear_callgraph_refresh_worker_test_seam(&root);
+    }
+
     #[test]
     fn forced_rebuild_without_writer_capability_cannot_report_old_store_as_ready() {
         let _git_env = crate::test_env::hermetic_git_env_guard();
@@ -12323,7 +12637,7 @@ mod reexport_resolution_tests {
             project_root: PathBuf::from("/fixture"),
             files: files.into_iter().collect(),
             caller_data: HashMap::new(),
-            workspace_crate_prefixes: std::sync::OnceLock::new(),
+            workspace_crate_prefixes: WorkspaceCratePrefixCache::default(),
         }
     }
 
