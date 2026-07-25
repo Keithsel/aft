@@ -24,11 +24,17 @@ import { spawn } from "node:child_process";
  *
  * SCOPE: this only pays off for a LARGE, freshly written binary. Small
  * executables (the shell shims some tests write) have nothing to page in and
- * gain nothing here — but they are still exposed to process-creation
- * scheduling latency, which was measured on this machine at a 4ms median with
- * a 238ms outlier on a two-line script. That tail is independent of size and
- * cannot be pre-paid, so the only defence is a spawn budget wide enough to
- * absorb it. Do not reach for this helper to fix a small-script flake.
+ * gain nothing here.
+ *
+ * They are separately exposed to a sporadic spawn outlier: a two-line script
+ * measured here at a 4-6ms median with a single 238ms sample, reproduced
+ * independently in another repo on this machine at similar magnitude, and
+ * absent from a later 40-sample run. Its cause is not established — it is not
+ * size-dependent, and it is not CPU contention (a deliberate-load run came out
+ * tighter than a quiet one, the opposite of the contention story). Since it
+ * cannot be pre-paid or predicted, the only defence is a spawn budget wide
+ * enough to absorb the observed tail. Do not reach for this helper to fix a
+ * small-script flake.
  *
  * No-op off Darwin. Cheap to repeat — warming an already-warm inode is a few ms.
  */
