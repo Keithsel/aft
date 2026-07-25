@@ -352,6 +352,7 @@ fn gather_file_contribution(
     file_analyzer: &mut DeadCodeFileAnalyzer,
 ) -> FileContribution {
     let file_name = relative_path(&job.project_root, file);
+    let generated = crate::inspect::generated::is_generated_file(&job.project_root, file);
     if let Some(language) = dead_code_skipped_language(file) {
         return FileContribution::new(
             InspectCategory::DeadCode,
@@ -360,6 +361,7 @@ fn gather_file_contribution(
             json!({
                 "file": file_name,
                 "facts_format_version": DEAD_CODE_FACTS_FORMAT_VERSION,
+                "generated": generated,
                 "exports": [],
                 "skipped_languages": [language],
             }),
@@ -384,10 +386,10 @@ fn gather_file_contribution(
         type_ref_names,
     } = file_analyzer.analyze_file(file, oxc_facts.is_some());
 
-    let generated = crate::inspect::generated::is_generated_file(&job.project_root, file);
     let mut payload = json!({
         "file": file_name,
         "facts_format_version": DEAD_CODE_FACTS_FORMAT_VERSION,
+        "generated": generated,
         "exports": exports
             .iter()
             .map(|export| {
@@ -404,9 +406,6 @@ fn gather_file_contribution(
             .collect::<Vec<_>>(),
     });
 
-    if generated {
-        payload["generated"] = json!(true);
-    }
     if !raw_imports.is_empty() {
         payload["raw_imports"] = json!(raw_imports);
     }
@@ -3179,7 +3178,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 struct DeadCodeContribution {
     file: String,
     #[serde(default)]
-    generated: bool,
+    generated: Option<bool>,
     exports: Vec<ExportContribution>,
     #[serde(default)]
     facts_format_version: Option<u32>,
@@ -3446,6 +3445,30 @@ mod tests {
                 item.get("file").and_then(serde_json::Value::as_str) == Some(file)
                     && item.get("symbol").and_then(serde_json::Value::as_str) == Some(symbol)
             })
+    }
+
+    #[test]
+    fn contributions_persist_non_generated_classification() {
+        let (_temp_dir, root, paths) = fixture_project(&[
+            ("src/hand.ts", "export const hand = 1;\n"),
+            ("build.gradle", "task smokeTest {}\n"),
+        ]);
+        let success = run_dead_code_scan(&job(
+            &root,
+            paths.clone(),
+            snapshot(paths.clone(), Vec::new(), Vec::new()),
+        ))
+        .outcome
+        .expect("scan succeeds");
+
+        assert_eq!(success.contributions.len(), 2);
+        assert!(success.contributions.iter().all(|contribution| {
+            contribution
+                .contribution
+                .get("generated")
+                .and_then(Value::as_bool)
+                == Some(false)
+        }));
     }
 
     #[test]

@@ -532,15 +532,13 @@ fn oxc_unused_exports_contribution(
     let generated = crate::inspect::generated::is_generated_file(project_root, &facts.path);
     let mut contribution = json!({
         "file": relative_string(project_root, &facts.path),
+        "generated": generated,
         "exports": exports,
         "imports": [],
         "provenance": OXC_PROVENANCE,
         "oxc_facts": facts_payload,
     });
     if let Value::Object(object) = &mut contribution {
-        if generated {
-            object.insert("generated".to_string(), Value::Bool(true));
-        }
         if let Some(parse_errors) = parse_errors {
             object.insert(
                 "parse_errors".to_string(),
@@ -585,8 +583,9 @@ fn oxc_read_error_contribution(
     };
     let freshness = freshness_for_oxc_error_file(&file_path)?;
     let generated = crate::inspect::generated::is_generated_file(project_root, &file_path);
-    let mut contribution = json!({
+    let contribution = json!({
         "file": relative_file,
+        "generated": generated,
         "exports": [],
         "imports": [],
         "parse_errors": [{
@@ -594,9 +593,6 @@ fn oxc_read_error_contribution(
             "message": error.message,
         }],
     });
-    if generated {
-        contribution["generated"] = json!(true);
-    }
     Some(FileContribution::new(
         InspectCategory::UnusedExports,
         file_path,
@@ -759,14 +755,12 @@ fn empty_file_scan(
     skipped_language: Option<&'static str>,
 ) -> FileScan {
     let generated = crate::inspect::generated::is_generated_file(Path::new(""), &file_path);
-    let mut contribution = json!({
+    let contribution = json!({
         "file": relative_file,
+        "generated": generated,
         "exports": [],
         "imports": [],
     });
-    if generated {
-        contribution["generated"] = json!(true);
-    }
     FileScan {
         contribution: FileContribution::new(
             InspectCategory::UnusedExports,
@@ -814,15 +808,12 @@ fn contribution_value(
         })
         .collect::<Vec<_>>();
 
-    let mut contribution = json!({
+    json!({
         "file": relative_file,
+        "generated": generated,
         "exports": exports_json,
         "imports": imports_json,
-    });
-    if generated {
-        contribution["generated"] = json!(true);
-    }
-    contribution
+    })
 }
 
 fn import_edges_from_block(
@@ -1667,6 +1658,57 @@ export function bannerUnused() {}
             .filter_map(|item| item["file"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(item_files.first(), Some(&"src/hand.ts"), "{item_files:?}");
+    }
+
+    #[test]
+    fn contribution_producers_persist_non_generated_classification() {
+        let (_dir, root, paths) = fixture_project(&[
+            ("src/hand.ts", "export const hand = 1;\n"),
+            ("src/other.rs", "pub fn other() {}\n"),
+        ]);
+        let scan_job = job(&root, paths.clone());
+
+        let legacy = run_unused_exports_scan(&scan_job)
+            .outcome
+            .expect("legacy scan succeeds");
+        assert!(legacy.contributions.iter().all(|contribution| {
+            contribution
+                .contribution
+                .get("generated")
+                .and_then(Value::as_bool)
+                == Some(false)
+        }));
+
+        let oxc_result = crate::inspect::oxc_engine::analyze_files(
+            &root,
+            &paths,
+            crate::inspect::oxc_engine::AnalyzeOptions::default(),
+        )
+        .expect("oxc analysis succeeds");
+        let oxc = run_unused_exports_scan_with_oxc(&scan_job, Some(&oxc_result))
+            .outcome
+            .expect("oxc scan succeeds");
+        assert!(oxc.contributions.iter().all(|contribution| {
+            contribution
+                .contribution
+                .get("generated")
+                .and_then(Value::as_bool)
+                == Some(false)
+        }));
+
+        let error = OxcEngineError {
+            file: paths[0].clone(),
+            message: "fixture parse error".to_string(),
+        };
+        let error_contribution = oxc_read_error_contribution(&root, &error)
+            .expect("readable error file produces a contribution");
+        assert_eq!(
+            error_contribution
+                .contribution
+                .get("generated")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
     }
 
     #[test]

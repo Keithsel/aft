@@ -1,8 +1,17 @@
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+#[cfg(test)]
+use std::path::PathBuf;
 use std::path::{Component, Path};
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 
 const GENERATED_CONTENT_LINES: usize = 5;
+
+#[cfg(test)]
+static FILE_PROBES: OnceLock<Mutex<BTreeMap<PathBuf, usize>>> = OnceLock::new();
 
 pub(crate) fn is_generated_file(project_root: &Path, path: &Path) -> bool {
     if path_has_generated_shape(path) {
@@ -28,9 +37,9 @@ pub(crate) fn is_generated_file_from_source(path: &Path, source: &str) -> bool {
 pub(crate) fn is_generated_file_with_cached_hint(
     project_root: &Path,
     relative_file: &str,
-    cached_hint: bool,
+    cached_hint: Option<bool>,
 ) -> bool {
-    cached_hint || is_generated_file(project_root, Path::new(relative_file))
+    cached_hint.unwrap_or_else(|| is_generated_file(project_root, Path::new(relative_file)))
 }
 
 pub(crate) fn path_has_generated_shape(path: &Path) -> bool {
@@ -59,6 +68,9 @@ fn is_generated_segment(component: Component<'_>) -> bool {
 }
 
 fn first_lines_have_generated_marker(path: &Path) -> bool {
+    #[cfg(test)]
+    bump_file_probe_count(path);
+
     let Ok(file) = File::open(path) else {
         return false;
     };
@@ -72,6 +84,45 @@ fn first_lines_have_generated_marker(path: &Path) -> bool {
         prefix.push('\n');
     }
     source_has_generated_marker(&prefix)
+}
+
+#[cfg(test)]
+fn debug_file_probes() -> &'static Mutex<BTreeMap<PathBuf, usize>> {
+    FILE_PROBES.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+#[cfg(test)]
+fn bump_file_probe_count(path: &Path) {
+    if let Ok(mut probes) = debug_file_probes().lock() {
+        *probes.entry(path.to_path_buf()).or_default() += 1;
+    }
+}
+
+#[cfg(test)]
+#[doc(hidden)]
+pub fn reset_file_probe_count_for_debug(project_root: &Path) {
+    let project_root =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    if let Ok(mut probes) = debug_file_probes().lock() {
+        probes.retain(|path, _| !path.starts_with(&project_root));
+    }
+}
+
+#[cfg(test)]
+#[doc(hidden)]
+pub fn file_probe_count_for_debug(project_root: &Path) -> usize {
+    let project_root =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    debug_file_probes()
+        .lock()
+        .map(|probes| {
+            probes
+                .iter()
+                .filter(|(path, _)| path.starts_with(&project_root))
+                .map(|(_, count)| *count)
+                .sum()
+        })
+        .unwrap_or_default()
 }
 
 fn source_has_generated_marker(source: &str) -> bool {

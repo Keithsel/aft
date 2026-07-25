@@ -1357,6 +1357,7 @@ fn inspect_dead_code_contributions_are_byte_identical_for_mixed_fixture() {
             json!({
                 "file": "src/app.ts",
                 "facts_format_version": 3,
+                "generated": false,
                 "exports": [
                     {"symbol": "main", "kind": "function", "line": 2}
                 ],
@@ -1371,6 +1372,7 @@ fn inspect_dead_code_contributions_are_byte_identical_for_mixed_fixture() {
             json!({
                 "file": "src/barrel.ts",
                 "facts_format_version": 3,
+                "generated": false,
                 "exports": [
                     {"symbol": "Result", "kind": "re_export", "line": 1}
                 ],
@@ -1384,6 +1386,7 @@ fn inspect_dead_code_contributions_are_byte_identical_for_mixed_fixture() {
             json!({
                 "file": "src/foo.rs",
                 "facts_format_version": 3,
+                "generated": false,
                 "exports": [
                     {"symbol": "Foo", "kind": "struct", "line": 1, "is_type_like": true},
                     {"symbol": "Dead", "kind": "struct", "line": 2, "is_type_like": true}
@@ -1395,6 +1398,7 @@ fn inspect_dead_code_contributions_are_byte_identical_for_mixed_fixture() {
             json!({
                 "file": "src/lib.rs",
                 "facts_format_version": 3,
+                "generated": false,
                 "exports": [
                     {"symbol": "Foo", "kind": "struct", "line": 1, "is_type_like": true},
                     {"symbol": "use_foo", "kind": "function", "line": 3}
@@ -1413,6 +1417,7 @@ fn inspect_dead_code_contributions_are_byte_identical_for_mixed_fixture() {
             json!({
                 "file": "src/service.ts",
                 "facts_format_version": 3,
+                "generated": false,
                 "exports": [
                     {"symbol": "Service", "kind": "class", "line": 1},
                     {"symbol": "render", "kind": "method", "line": 1},
@@ -1468,6 +1473,7 @@ fn inspect_dead_code_contribution_shape_matches_contract() {
         json!({
             "file": "src/foo.ts",
             "facts_format_version": 3,
+                "generated": false,
             "exports": [
                 {"symbol": "Foo", "kind": "class", "line": 1},
                 {"symbol": "helper", "kind": "function", "line": 2}

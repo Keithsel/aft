@@ -3093,7 +3093,7 @@ struct DeadCodeRefreshContribution {
 struct UnusedExportsContribution {
     file: String,
     #[serde(default)]
-    generated: bool,
+    generated: Option<bool>,
     exports: Vec<ExportContribution>,
     #[serde(default)]
     imports: Vec<ImportContribution>,
@@ -3892,6 +3892,66 @@ export function bannerUnused() {}
         assert_eq!(rolled_up["count"], 1, "{rolled_up:#}");
         assert_eq!(rolled_up["generated_count"], 2, "{rolled_up:#}");
         assert_eq!(rolled_up["total_count"], 3, "{rolled_up:#}");
+    }
+
+    #[test]
+    fn unused_exports_cached_generated_state_avoids_reprobe_with_legacy_fallback() {
+        let (_dir, root, paths) = generated_unused_exports_fixture();
+        let job = unused_exports_job(&root, paths.clone());
+        let entry_points = crate::inspect::entry_points::resolve_entry_points(&root);
+        let oxc_result = crate::inspect::oxc_engine::analyze_files(
+            &root,
+            &paths,
+            AnalyzeOptions {
+                entry_points: Vec::new(),
+                public_api_files: entry_points.public_api_files(),
+                executable_root_exports: entry_points.executable_root_exports(),
+                force_reparse_files: Vec::new(),
+                entry_reachability: false,
+            },
+        )
+        .expect("oxc analyze succeeds");
+        let fresh = crate::inspect::scanners::unused_exports::run_unused_exports_scan_with_oxc(
+            &job,
+            Some(&oxc_result),
+        )
+        .outcome
+        .expect("fresh scan succeeds");
+        let mut contributions = fresh.contributions;
+        let handwritten = contributions
+            .iter_mut()
+            .find(|contribution| contribution.file_path.ends_with("src/hand.ts"))
+            .expect("handwritten contribution");
+        handwritten.contribution["generated"] = json!(false);
+
+        crate::inspect::generated::reset_file_probe_count_for_debug(&root);
+        let explicit_cached =
+            roll_up_unused_exports_contributions(&job, &contributions, Some(MAX_DRILL_DOWN_ITEMS));
+        assert_eq!(explicit_cached, fresh.aggregate);
+        assert_eq!(
+            crate::inspect::generated::file_probe_count_for_debug(&root),
+            0,
+            "an explicit cached generated=false must not probe the file again"
+        );
+
+        let generated_banner = contributions
+            .iter_mut()
+            .find(|contribution| contribution.file_path.ends_with("src/banner.ts"))
+            .expect("generated banner contribution");
+        generated_banner
+            .contribution
+            .as_object_mut()
+            .expect("contribution object")
+            .remove("generated");
+        crate::inspect::generated::reset_file_probe_count_for_debug(&root);
+        let legacy_cached =
+            roll_up_unused_exports_contributions(&job, &contributions, Some(MAX_DRILL_DOWN_ITEMS));
+        assert_eq!(legacy_cached, fresh.aggregate);
+        assert_eq!(
+            crate::inspect::generated::file_probe_count_for_debug(&root),
+            1,
+            "a legacy contribution without generated must probe and recover its classification"
+        );
     }
 
     #[test]
