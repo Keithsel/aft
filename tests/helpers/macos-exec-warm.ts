@@ -26,15 +26,14 @@ import { spawn } from "node:child_process";
  * executables (the shell shims some tests write) have nothing to page in and
  * gain nothing here.
  *
- * They are separately exposed to a sporadic spawn outlier: a two-line script
- * measured here at a 4-6ms median with a single 238ms sample, reproduced
- * independently in another repo on this machine at similar magnitude, and
- * absent from a later 40-sample run. Its cause is not established — it is not
- * size-dependent, and it is not CPU contention (a deliberate-load run came out
- * tighter than a quiet one, the opposite of the contention story). Since it
- * cannot be pre-paid or predicted, the only defence is a spawn budget wide
- * enough to absorb the observed tail. Do not reach for this helper to fix a
- * small-script flake.
+ * They are separately exposed to a rare spawn outlier. Across n=300 on a
+ * two-line script: median 2.2ms, p99 3.4ms, and a single 260ms sample — so
+ * roughly 0.3% incidence at ~100x the median, far outside the body but far too
+ * rare to accumulate. Its cause is not established: it is not size-dependent,
+ * not CPU contention (a deliberate-load run came out tighter than a quiet one),
+ * and not an idle-wake ramp (spawns preceded by a 2s gap showed no tail).
+ * Budget spawn-based tests for the observed magnitude rather than trying to
+ * prevent it, and do not reach for this helper to fix a small-script flake.
  *
  * No-op off Darwin. Cheap to repeat — warming an already-warm inode is a few ms.
  */
