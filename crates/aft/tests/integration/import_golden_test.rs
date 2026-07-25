@@ -1627,6 +1627,14 @@ int main(void) { return 0; }
             }],
         },
         Scenario {
+            // Organize must not reorder these. `#include` is a textual paste
+            // whose expansion depends on preprocessor state at its position,
+            // so sorting can change what the program compiles to. The golden
+            // keeps source order; the blank lines it also records are cosmetic
+            // and are the price of routing every include through the barrier
+            // path. If a future golden for this scenario shows the system
+            // headers hoisted above the quoted ones, that is the bug returning,
+            // not a formatting change.
             name: "c_organize_mixed_includes",
             ext: "h",
             input: "#include \"z_local.h\"\n#include <stdio.h>\n#include \"a_local.h\"\n#include <stdlib.h>\n\nvoid f(void);\n",
