@@ -22,6 +22,14 @@ import { spawn } from "node:child_process";
  * a correctness gate, so every failure path is swallowed and callers treat it
  * as advisory.
  *
+ * SCOPE: this only pays off for a LARGE, freshly written binary. Small
+ * executables (the shell shims some tests write) have nothing to page in and
+ * gain nothing here — but they are still exposed to process-creation
+ * scheduling latency, which was measured on this machine at a 4ms median with
+ * a 238ms outlier on a two-line script. That tail is independent of size and
+ * cannot be pre-paid, so the only defence is a spawn budget wide enough to
+ * absorb it. Do not reach for this helper to fix a small-script flake.
+ *
  * No-op off Darwin. Cheap to repeat — warming an already-warm inode is a few ms.
  */
 export async function warmMacosExec(binaryPath: string): Promise<void> {
