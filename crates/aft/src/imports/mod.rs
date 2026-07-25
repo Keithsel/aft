@@ -112,6 +112,10 @@ pub enum ImportForm {
         type_only: bool,
         /// Side-effect-only `import "mod"` (no bindings).
         side_effect: bool,
+        /// Verbatim `with { ... }` or legacy `assert { ... }` clause.
+        /// Import attributes select the module type, so dropping this clause can
+        /// change a valid import into one the runtime refuses to load.
+        attribute_clause: Option<String>,
     },
     /// Python `import module` (`from_import = false`) or
     /// `from module import a, b` (`from_import = true`).
@@ -1259,6 +1263,42 @@ pub fn generate_import_line_with_namespace(
     namespace_import: Option<&str>,
     type_only: bool,
 ) -> String {
+    generate_import_line_with_namespace_and_attribute_clause(
+        lang,
+        module_path,
+        names,
+        default_import,
+        namespace_import,
+        type_only,
+        None,
+    )
+}
+
+/// Generate a line while retaining an existing ES import-attribute clause.
+/// Other language engines ignore the clause because it has no meaning there.
+pub(crate) fn generate_import_line_with_namespace_and_attribute_clause(
+    lang: LangId,
+    module_path: &str,
+    names: &[String],
+    default_import: Option<&str>,
+    namespace_import: Option<&str>,
+    type_only: bool,
+    attribute_clause: Option<&str>,
+) -> String {
+    if matches!(
+        lang,
+        LangId::TypeScript | LangId::Tsx | LangId::JavaScript | LangId::Vue
+    ) {
+        return generate_ts_import_line_with_attribute_clause(
+            module_path,
+            names,
+            default_import,
+            namespace_import,
+            type_only,
+            attribute_clause,
+        );
+    }
+
     generate_import(
         lang,
         &ImportRequest::legacy(
@@ -1422,6 +1462,7 @@ fn parse_single_ts_import(source: &str, node: &Node) -> Option<ImportStatement> 
         named: names.clone(),
         type_only: is_type_only,
         side_effect: matches!(kind, ImportKind::SideEffect),
+        attribute_clause: extract_es_import_attribute_clause(source, node),
     };
 
     Some(ImportStatement {
@@ -1435,6 +1476,39 @@ fn parse_single_ts_import(source: &str, node: &Node) -> Option<ImportStatement> 
         raw_text,
         form,
     })
+}
+
+/// Capture the exact source spelling because `with` and legacy `assert`
+/// clauses have the same semantics but must not be normalized during a rewrite.
+fn extract_es_import_attribute_clause(source: &str, node: &Node) -> Option<String> {
+    let mut cursor = node.walk();
+    if !cursor.goto_first_child() {
+        return None;
+    }
+
+    let module_end = loop {
+        let child = cursor.node();
+        if child.kind() == "string" {
+            break child.end_byte();
+        }
+        if !cursor.goto_next_sibling() {
+            return None;
+        }
+    };
+
+    let tail = source[module_end..node.end_byte()].trim();
+    let clause = tail.strip_suffix(';').unwrap_or(tail).trim();
+    (clause.starts_with("with") || clause.starts_with("assert")).then(|| clause.to_string())
+}
+
+/// Return the semantic import-attribute clause attached to an ES import.
+pub(crate) fn es_import_attribute_clause(imp: &ImportStatement) -> Option<&str> {
+    match &imp.form {
+        ImportForm::Es {
+            attribute_clause, ..
+        } => attribute_clause.as_deref(),
+        _ => None,
+    }
 }
 
 /// Extract the module path string from an import_statement node.
@@ -1590,6 +1664,46 @@ fn extract_namespace_import(source: &str, node: &Node, namespace_import: &mut Op
 
 /// Generate an import line for TS/JS/TSX.
 fn generate_ts_import_line(
+    module_path: &str,
+    names: &[String],
+    default_import: Option<&str>,
+    namespace_import: Option<&str>,
+    type_only: bool,
+) -> String {
+    generate_ts_import_line_with_attribute_clause(
+        module_path,
+        names,
+        default_import,
+        namespace_import,
+        type_only,
+        None,
+    )
+}
+
+fn generate_ts_import_line_with_attribute_clause(
+    module_path: &str,
+    names: &[String],
+    default_import: Option<&str>,
+    namespace_import: Option<&str>,
+    type_only: bool,
+    attribute_clause: Option<&str>,
+) -> String {
+    let line = generate_ts_import_line_base(
+        module_path,
+        names,
+        default_import,
+        namespace_import,
+        type_only,
+    );
+    let Some(attribute_clause) = attribute_clause else {
+        return line;
+    };
+
+    let line = line.strip_suffix(';').unwrap_or(&line);
+    format!("{line} {};", attribute_clause.trim())
+}
+
+fn generate_ts_import_line_base(
     module_path: &str,
     names: &[String],
     default_import: Option<&str>,
@@ -2695,12 +2809,14 @@ mod tests {
                 named,
                 type_only,
                 side_effect,
+                attribute_clause,
             } => {
                 assert_eq!(default_import.as_deref(), Some("Default"));
                 assert_eq!(namespace_import, &None);
                 assert_eq!(named, &block.imports[0].names);
                 assert!(!type_only);
                 assert!(!side_effect);
+                assert_eq!(attribute_clause, &None);
             }
             other => panic!("expected Es, got {other:?}"),
         }
@@ -3140,6 +3256,21 @@ import { Config } from '../config';
             false,
         );
         assert_eq!(line, "import React, { useState } from 'react';");
+    }
+
+    #[test]
+    fn parse_es_import_attributes_preserve_standard_and_legacy_spellings() {
+        let source = "import data from './data.json' with { type: 'json' };\nimport legacy from './legacy.json' assert { type: 'json' };\n";
+        let (_, block) = parse_js(source);
+
+        assert_eq!(
+            es_import_attribute_clause(&block.imports[0]),
+            Some("with { type: 'json' }")
+        );
+        assert_eq!(
+            es_import_attribute_clause(&block.imports[1]),
+            Some("assert { type: 'json' }")
+        );
     }
 
     #[test]

@@ -2791,3 +2791,99 @@ fn add_import_scala2_new_wildcard_uses_existing_dialect() {
     );
     aft.shutdown();
 }
+
+#[test]
+fn organize_imports_preserves_es_attributes_and_ordinary_organization() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("attributes.mjs");
+    fs::write(
+        &file,
+        "import same from './config.json' with { type: 'json' };\n\
+import same from './config.json';\n\
+import legacy from './legacy.json' assert { type: 'json' };\n\
+import { zebra, alpha } from 'ordinary';\n\
+import { alpha, zebra } from 'ordinary';\n",
+    )
+    .unwrap();
+    aft.send(&format!(
+        r#"{{"id":"cfg-attrs","command":"configure","harness":"opencode","project_root":{}}}"#,
+        crate::helpers::json_string(&dir.path().display())
+    ));
+
+    let resp = send_organize_imports(&mut aft, "organize-attrs", file.to_str().unwrap());
+    assert_eq!(resp["success"], true, "organize should succeed: {resp:?}");
+    assert_eq!(resp["removed_duplicates"], 1);
+
+    let content = fs::read_to_string(&file).unwrap();
+    assert!(content.contains("with { type: 'json' }"), "{content}");
+    assert!(content.contains("assert { type: 'json' }"), "{content}");
+    assert_eq!(
+        content.matches("from './config.json'").count(),
+        2,
+        "{content}"
+    );
+    assert_eq!(content.matches("from 'ordinary'").count(), 1, "{content}");
+    assert!(
+        content.contains("import { alpha, zebra } from 'ordinary';"),
+        "ordinary ES imports must still sort and deduplicate:\n{content}"
+    );
+
+    aft.shutdown();
+}
+
+#[test]
+fn add_and_partial_remove_preserve_es_import_attributes() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("attributes.mjs");
+    fs::write(
+        &file,
+        "import config from './config.json' with { type: 'json' };\n",
+    )
+    .unwrap();
+    aft.send(&format!(
+        r#"{{"id":"cfg-attrs-mutate","command":"configure","harness":"opencode","project_root":{}}}"#,
+        crate::helpers::json_string(&dir.path().display())
+    ));
+
+    let add = send_add_import(
+        &mut aft,
+        "add-attrs",
+        file.to_str().unwrap(),
+        "./config.json",
+        Some(&["extra"]),
+        None,
+        false,
+    );
+    assert_eq!(add["success"], true, "add should succeed: {add:?}");
+    let after_add = fs::read_to_string(&file).unwrap();
+    assert_eq!(after_add.matches("./config.json").count(), 1, "{after_add}");
+    assert!(
+        after_add.contains("import config, { extra } from './config.json' with { type: 'json' };")
+            || after_add
+                .contains("import config, { extra } from \"./config.json\" with { type: 'json' };"),
+        "add should merge into the attributed import without dropping its clause:\n{after_add}"
+    );
+
+    let remove = send_remove_import(
+        &mut aft,
+        "remove-attrs",
+        file.to_str().unwrap(),
+        "./config.json",
+        Some("extra"),
+    );
+    assert_eq!(remove["success"], true, "remove should succeed: {remove:?}");
+    let after_remove = fs::read_to_string(&file).unwrap();
+    assert!(
+        after_remove.contains("with { type: 'json' }"),
+        "{after_remove}"
+    );
+    assert!(
+        after_remove.contains("import config from"),
+        "{after_remove}"
+    );
+    assert!(!after_remove.contains("extra"), "{after_remove}");
+
+    aft.shutdown();
+}

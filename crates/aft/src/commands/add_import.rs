@@ -332,11 +332,15 @@ pub fn handle_add_import(req: &RawRequest, ctx: &AppContext) -> Response {
             LangId::TypeScript | LangId::Tsx | LangId::JavaScript | LangId::Python | LangId::Rust
         ) {
         block.imports.iter().find(|imp| {
+            let es_import = matches!(
+                lang,
+                LangId::TypeScript | LangId::Tsx | LangId::JavaScript | LangId::Vue
+            );
             imp.module_path == module
                 && imp.kind == target_kind
                 && imp.namespace_import.is_none()
-                && imp.default_import.is_none()
-                && !imp.names.is_empty()
+                && (es_import || imp.default_import.is_none())
+                && (es_import || !imp.names.is_empty())
                 && (lang != LangId::Python
                     || matches!(
                         imp.form,
@@ -374,12 +378,14 @@ pub fn handle_add_import(req: &RawRequest, ctx: &AppContext) -> Response {
         // Build the merged named-import list: union of existing + new, sorted.
         let merged_names = merge_named_import_specifiers(&existing.names, &names);
 
-        let merged_line = imports::generate_import_line(
+        let merged_line = imports::generate_import_line_with_namespace_and_attribute_clause(
             lang,
             &existing.module_path,
             &merged_names,
-            None,
+            existing.default_import.as_deref(),
+            existing.namespace_import.as_deref(),
             type_only,
+            imports::es_import_attribute_clause(existing),
         );
         (
             existing.byte_range.start,
@@ -388,13 +394,14 @@ pub fn handle_add_import(req: &RawRequest, ctx: &AppContext) -> Response {
             true,
         )
     } else if let Some(existing) = namespace_merge_target {
-        let merged_line = imports::generate_import_line_with_namespace(
+        let merged_line = imports::generate_import_line_with_namespace_and_attribute_clause(
             lang,
             &existing.module_path,
             &existing.names,
             existing.default_import.as_deref(),
             namespace.as_deref(),
             type_only,
+            imports::es_import_attribute_clause(existing),
         );
         (
             existing.byte_range.start,
@@ -462,6 +469,30 @@ pub fn handle_add_import(req: &RawRequest, ctx: &AppContext) -> Response {
         let import_line = if matches!(lang, LangId::Go) {
             let in_group = imports::go_offset_is_in_grouped_import(&source, &tree, insert_offset);
             imports::generate_go_import_line_pub(module, default_import.as_deref(), in_group)
+        } else if matches!(
+            lang,
+            LangId::TypeScript | LangId::Tsx | LangId::JavaScript | LangId::Vue
+        ) {
+            // Import attributes select the module type. A new sibling import of
+            // an already-attributed module must carry the same clause or runtimes
+            // such as Node reject that sibling before loading the module.
+            let mut clauses = block
+                .imports
+                .iter()
+                .filter(|imp| imp.module_path == module)
+                .filter_map(imports::es_import_attribute_clause);
+            let inherited_clause = clauses
+                .next()
+                .filter(|first| clauses.all(|item| item == *first));
+            imports::generate_import_line_with_namespace_and_attribute_clause(
+                lang,
+                module,
+                &names,
+                default_import.as_deref(),
+                namespace.as_deref(),
+                type_only,
+                inherited_clause,
+            )
         } else {
             imports::generate_import(lang, &import_request)
         };

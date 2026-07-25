@@ -1202,8 +1202,14 @@ fn rewrite_consumer_imports(
         };
 
         let type_only = imp.kind == imports::ImportKind::Type;
-        let moved_import =
-            generate_import_for_bindings(lang, &new_import_path, &moved_bindings, type_only);
+        let attribute_clause = imports::es_import_attribute_clause(imp);
+        let moved_import = generate_import_for_bindings(
+            lang,
+            &new_import_path,
+            &moved_bindings,
+            type_only,
+            attribute_clause,
+        );
 
         if remaining_names.is_empty()
             && remaining_default.is_none()
@@ -1211,13 +1217,14 @@ fn rewrite_consumer_imports(
         {
             edits.push((imp.byte_range.clone(), moved_import));
         } else {
-            let kept_import = imports::generate_import_line_with_namespace(
+            let kept_import = imports::generate_import_line_with_namespace_and_attribute_clause(
                 lang,
                 &imp.module_path,
                 &remaining_names,
                 remaining_default.as_deref(),
                 remaining_namespace.as_deref(),
                 type_only,
+                attribute_clause,
             );
             edits.push((
                 imp.byte_range.clone(),
@@ -1734,14 +1741,16 @@ fn generate_import_for_bindings(
     module_path: &str,
     bindings: &MovedImportBindings,
     type_only: bool,
+    attribute_clause: Option<&str>,
 ) -> String {
-    imports::generate_import_line_with_namespace(
+    imports::generate_import_line_with_namespace_and_attribute_clause(
         lang,
         module_path,
         &bindings.named,
         bindings.default_import.as_deref(),
         bindings.namespace_import.as_deref(),
         type_only,
+        attribute_clause,
     )
 }
 
@@ -1783,10 +1792,11 @@ fn build_add_moved_import_edit(
     // imported. Preserve the existing module spelling (for example `./dest.js`).
     if !moved_symbol_is_default {
         if let Some(existing) = block.imports.iter().find(|import| {
+            let es_import = matches!(lang, LangId::TypeScript | LangId::Tsx | LangId::JavaScript);
             import.kind == imports::ImportKind::Value
                 && import.namespace_import.is_none()
-                && import.default_import.is_none()
-                && !import.names.is_empty()
+                && (es_import || import.default_import.is_none())
+                && (es_import || !import.names.is_empty())
                 && import_path_matches_file(&import.module_path, consumer_file, dest_file)
         }) {
             let requested = &names[0];
@@ -1801,12 +1811,14 @@ fn build_add_moved_import_edit(
 
             let merged_names =
                 super::add_import::merge_named_import_specifiers(&existing.names, &names);
-            let merged_line = imports::generate_import_line(
+            let merged_line = imports::generate_import_line_with_namespace_and_attribute_clause(
                 lang,
                 &existing.module_path,
                 &merged_names,
-                None,
+                existing.default_import.as_deref(),
+                existing.namespace_import.as_deref(),
                 false,
+                imports::es_import_attribute_clause(existing),
             );
             return Some((existing.byte_range.clone(), merged_line));
         }
@@ -1815,8 +1827,29 @@ fn build_add_moved_import_edit(
     let group = imports::classify_group(lang, &new_import_path);
     let (insert_offset, needs_blank_before, needs_blank_after) =
         imports::find_insertion_point(content, block, group, &new_import_path, false);
-    let import_line =
-        imports::generate_import_line(lang, &new_import_path, &names, default_import, false);
+    let import_line = if matches!(lang, LangId::TypeScript | LangId::Tsx | LangId::JavaScript) {
+        let mut clauses = block
+            .imports
+            .iter()
+            .filter(|import| {
+                import_path_matches_file(&import.module_path, consumer_file, dest_file)
+            })
+            .filter_map(imports::es_import_attribute_clause);
+        let inherited_clause = clauses
+            .next()
+            .filter(|first| clauses.all(|item| item == *first));
+        imports::generate_import_line_with_namespace_and_attribute_clause(
+            lang,
+            &new_import_path,
+            &names,
+            default_import,
+            None,
+            false,
+            inherited_clause,
+        )
+    } else {
+        imports::generate_import_line(lang, &new_import_path, &names, default_import, false)
+    };
 
     let mut insert_text = String::new();
     if needs_blank_before {

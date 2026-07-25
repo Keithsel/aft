@@ -362,13 +362,14 @@ fn remove_name_from_imports(
                 edits.push((range, String::new()));
             } else {
                 // Other bindings remain — regenerate without target
-                let new_line = imports::generate_import_line_with_namespace(
+                let new_line = imports::generate_import_line_with_namespace_and_attribute_clause(
                     lang,
                     &imp.module_path,
                     &new_names,
                     imp.default_import.as_deref(),
                     imp.namespace_import.as_deref(),
                     imp.kind == imports::ImportKind::Type,
+                    imports::es_import_attribute_clause(imp),
                 );
                 edits.push((imp.byte_range.clone(), new_line));
             }
@@ -380,13 +381,14 @@ fn remove_name_from_imports(
                 edits.push((range, String::new()));
             } else {
                 // Has named or namespace imports too — regenerate without default
-                let new_line = imports::generate_import_line_with_namespace(
+                let new_line = imports::generate_import_line_with_namespace_and_attribute_clause(
                     lang,
                     &imp.module_path,
                     &imp.names,
                     None,
                     imp.namespace_import.as_deref(),
                     imp.kind == imports::ImportKind::Type,
+                    imports::es_import_attribute_clause(imp),
                 );
                 edits.push((imp.byte_range.clone(), new_line));
             }
@@ -398,13 +400,14 @@ fn remove_name_from_imports(
                 edits.push((range, String::new()));
             } else {
                 // Has default or named imports too — regenerate without namespace
-                let new_line = imports::generate_import_line_with_namespace(
+                let new_line = imports::generate_import_line_with_namespace_and_attribute_clause(
                     lang,
                     &imp.module_path,
                     &imp.names,
                     imp.default_import.as_deref(),
                     None,
                     imp.kind == imports::ImportKind::Type,
+                    imports::es_import_attribute_clause(imp),
                 );
                 edits.push((imp.byte_range.clone(), new_line));
             }

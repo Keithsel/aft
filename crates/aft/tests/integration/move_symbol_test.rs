@@ -1615,3 +1615,39 @@ fn extract_function_preserves_enclosing_export_keyword() {
 
     aft.shutdown();
 }
+
+#[test]
+fn move_symbol_preserves_attributes_on_rewritten_imports() {
+    let (_tmp, root) = setup_move_fixture();
+    let consumer = std::path::Path::new(&root).join("consumer_a.ts");
+    write_file(
+        &consumer,
+        "import { formatDate, parseDate } from './service' with { type: 'custom' };\n\
+export const rendered = formatDate(new Date()) + parseDate('2026-07-26');\n",
+    );
+
+    let mut aft = AftProcess::spawn();
+    configure(&mut aft, &root);
+    let source = format!("{root}/service.ts");
+    let destination = format!("{root}/utils.ts");
+    let resp = aft.send(&format!(
+        r#"{{"id":"move-attrs","command":"move_symbol","file":{},"symbol":"formatDate","destination":{}}}"#,
+        crate::helpers::json_string(&source),
+        crate::helpers::json_string(&destination)
+    ));
+    assert_eq!(resp["success"], true, "move should succeed: {resp:?}");
+
+    let content = std::fs::read_to_string(&consumer).unwrap();
+    assert!(
+        content.contains("import { parseDate } from './service' with { type: 'custom' };")
+            || content.contains("import { parseDate } from \"./service\" with { type: 'custom' };"),
+        "remaining bindings must retain the source import attribute:\n{content}"
+    );
+    assert!(
+        content.contains("import { formatDate } from './utils' with { type: 'custom' };")
+            || content.contains("import { formatDate } from \"./utils\" with { type: 'custom' };"),
+        "moved bindings must retain the rewritten import attribute:\n{content}"
+    );
+
+    aft.shutdown();
+}

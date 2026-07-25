@@ -643,6 +643,7 @@ fn organized_from_statement(imp: &ImportStatement, lang: LangId) -> OrganizedImp
         default_import: imp.default_import.clone(),
         namespace_import: imp.namespace_import.clone(),
         kind: imp.kind,
+        attribute_clause: imports::es_import_attribute_clause(imp).map(str::to_string),
         raw_override,
     }
 }
@@ -681,6 +682,7 @@ struct OrganizedImport {
     default_import: Option<String>,
     namespace_import: Option<String>,
     kind: ImportKind,
+    attribute_clause: Option<String>,
     /// When set, the import is rendered verbatim from this string instead of
     /// being regenerated from the structured fields. Used by dialect-sensitive
     /// languages (e.g. Scala) where re-rendering would normalize across
@@ -732,22 +734,23 @@ fn organize_generic_group(
     side_effects.extend(sorted);
 
     for imp in side_effects {
-        // Build dedup key: module_path + kind + sorted names + default + namespace.
-        // Namespace imports introduce local bindings, so different aliases are
-        // distinct and side-effect imports are not duplicates of namespace
-        // imports from the same module.
+        // Build dedup key from every semantic part of the import. Import
+        // attributes select the module type, so attributed and unattributed
+        // imports of the same path must remain distinct.
         let names_key = {
             let mut n = imp.names.clone();
             sort_named_specifiers(&mut n);
             n.join(",")
         };
+        let attribute_clause = imports::es_import_attribute_clause(imp);
         let dedup_key = format!(
-            "{}|{:?}|{}|{}|{}",
+            "{}|{:?}|{}|{}|{}|{}",
             imp.module_path,
             imp.kind,
             names_key,
             imp.default_import.as_deref().unwrap_or(""),
-            imp.namespace_import.as_deref().unwrap_or("")
+            imp.namespace_import.as_deref().unwrap_or(""),
+            attribute_clause.unwrap_or("")
         );
 
         if seen.contains(&dedup_key) {
@@ -765,6 +768,7 @@ fn organize_generic_group(
             default_import: imp.default_import.clone(),
             namespace_import: imp.namespace_import.clone(),
             kind: imp.kind,
+            attribute_clause: attribute_clause.map(str::to_string),
             raw_override: None,
         });
     }
@@ -815,6 +819,7 @@ fn organize_raw_preserving_group(
             default_import: imp.default_import.clone(),
             namespace_import: imp.namespace_import.clone(),
             kind: imp.kind,
+            attribute_clause: imports::es_import_attribute_clause(imp).map(str::to_string),
             raw_override: Some(imp.raw_text.trim().to_string()),
         })
         .collect();
@@ -994,6 +999,7 @@ fn organize_rust_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImport>, usiz
                     default_import: up.visibility.clone(),
                     namespace_import: None,
                     kind: up.kind,
+                    attribute_clause: None,
                     raw_override: None,
                 });
             }
@@ -1025,6 +1031,7 @@ fn organize_rust_group(imps: &[&ImportStatement]) -> (Vec<OrganizedImport>, usiz
             default_import: visibility,
             namespace_import: None,
             kind,
+            attribute_clause: None,
             raw_override: None,
         });
     }
@@ -1143,13 +1150,16 @@ fn generate_organized_line(imp: &OrganizedImport, lang: LangId) -> String {
                 format!("import \"{}\"", imp.module_path)
             }
         }
-        LangId::TypeScript | LangId::Tsx | LangId::JavaScript
-            if imp.names.is_empty()
-                && imp.default_import.is_none()
-                && imp.namespace_import.is_some() =>
-        {
-            let namespace = imp.namespace_import.as_deref().unwrap_or_default();
-            format!("import * as {} from '{}';", namespace, imp.module_path)
+        LangId::TypeScript | LangId::Tsx | LangId::JavaScript => {
+            imports::generate_import_line_with_namespace_and_attribute_clause(
+                lang,
+                &imp.module_path,
+                &imp.names,
+                imp.default_import.as_deref(),
+                imp.namespace_import.as_deref(),
+                imp.kind == ImportKind::Type,
+                imp.attribute_clause.as_deref(),
+            )
         }
         _ => {
             // TS/JS/TSX/Python — use the standard generator
