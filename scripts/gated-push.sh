@@ -30,5 +30,14 @@ if [[ $rc -ne 0 ]]; then
   exit "$rc"
 fi
 
-echo "gated-push: gate green — pushing to $remote $branch"
+echo "gated-push: gate green — running governed-surface preflight"
+# The v0.49 governed manifests byte-pin surface files (path-aliases.ts, the
+# .md inventories, tool schemas). Any edit to one of them silently stales the
+# manifests, and the unit suite fails at merge time on exactly that. Running
+# the audit and release gate here turns that from a CI round-trip into a
+# local refusal. See docs/v0.49-agent-surface-manifest.json for the pinned set.
+bun scripts/audit-v049-agent-surface.ts
+node scripts/release-gate-v049.mjs
+
+echo "gated-push: preflight green — pushing to $remote $branch"
 git push "$remote" "$branch"
