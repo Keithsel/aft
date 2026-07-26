@@ -3,7 +3,11 @@
 //! Tests exercise the full round-trip through the binary's JSON protocol:
 //! snapshot → checkpoint → modify → restore → verify file contents.
 
-use super::helpers::{user_config, AftProcess};
+use super::helpers::AftProcess;
+// Only the unix-gated symlink tests below take this route; on Windows every
+// caller is compiled out, so an unconditional import trips deny-warnings.
+#[cfg(unix)]
+use super::helpers::user_config;
 #[cfg(unix)]
 use aft::commands::checkpoint::handle_checkpoint;
 #[cfg(unix)]
