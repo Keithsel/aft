@@ -1169,7 +1169,7 @@ fn format_multi_file_tree(
     if truncated {
         output.push_str(&format!(
             "\n... truncated ({}/{} files shown, {}KB limit)\n\
-             Narrow scope with a more specific directory path or use filePath for single files.\n",
+             Narrow scope with a more specific directory path, or pass a single file as target.\n",
             files_shown,
             total_requested,
             max_bytes / 1024,

@@ -97,15 +97,6 @@
       "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
     },
     {
-      "path": "crates/aft/src/commands/outline.rs",
-      "location": "line 1172, column 70",
-      "line": 1172,
-      "column": 70,
-      "token": "filePath",
-      "class": "rust-compatibility",
-      "reason": "Rust command, translation, or protocol plumbing consumes the legacy wire spelling."
-    },
-    {
       "path": "crates/aft/src/commands/trace_to_symbol.rs",
       "location": "line 60, column 39",
       "line": 60,
