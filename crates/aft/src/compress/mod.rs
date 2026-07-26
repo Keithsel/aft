@@ -960,14 +960,17 @@ fn is_redirect_token(token: &str) -> bool {
 /// Outcome of scanning a command for a top-level pipeline.
 #[derive(Debug, PartialEq, Eq)]
 enum PipeSplit {
-    /// No top-level `|` — dispatch on the command as-is.
+    /// No top-level `|` and no top-level separator — dispatch on the
+    /// command as-is.
     None,
     /// A top-level pipeline; the captured stdout is this last stage's output.
     LastStage(String),
-    /// A pipe-like operator is present but the command couldn't be safely
-    /// parsed (unbalanced quotes/parens/backtick). Callers must NOT fall back
-    /// to head-token dispatch — a compressor that claims `cargo test | …`
-    /// would drop the piped output. Force generic instead.
+    /// The command cannot be safely dispatched to a head-token compressor.
+    /// Either a pipe coexists with other top-level structure (so the
+    /// captured output isn't just the last stage's), or a top-level
+    /// separator (`;`, `&&`, `||`, bare `&`, newline) means multiple
+    /// commands' output is interleaved — a head-token compressor would
+    /// delete the other commands' output. Force generic instead.
     Unsafe,
 }
 
@@ -982,6 +985,10 @@ enum PipeSplit {
 /// coexists with ANY of {a top-level separator `;`/`&&`/`||`/bare `&`/newline,
 /// an unbalanced quote/paren/backtick/escape, an unmatched `)`, or an empty
 /// trailing stage}, we return `Unsafe` so the caller forces generic compression.
+/// The same `Unsafe` result applies when there is NO pipe but a top-level
+/// separator IS present: the captured transcript interleaves multiple commands'
+/// output, so per-head specialized compression would delete the other commands'
+/// output.
 /// Top-level comments must already be removed by `strip_top_level_comment`.
 /// Redirects (`>`, `2>&1`, `&>`, …) are NOT separators.
 fn split_top_level_pipe(command: &str) -> PipeSplit {
@@ -1123,6 +1130,12 @@ fn split_top_level_pipe(command: &str) -> PipeSplit {
         }
     } else if imbalance && command.contains('|') {
         // No resolvable top-level pipe, but a `|` hides in an unbalanced region.
+        PipeSplit::Unsafe
+    } else if saw_top_separator {
+        // A top-level separator (`;`, `&&`, `||`, bare `&`, newline) without a
+        // pipe means multiple commands' output is interleaved in the captured
+        // transcript. Per-head specialized compression would delete the other
+        // commands' output — same rationale as the pipe Unsafe rule.
         PipeSplit::Unsafe
     } else {
         PipeSplit::None
@@ -1863,15 +1876,11 @@ replacement = "wget: ok"
 
     #[test]
     fn unknown_exit_code_keeps_byte_identical_legacy_compressor_output() {
-        let output =
-            "Success: no issues found in 1 source file\nError: later chained command failed\n";
+        // Use a clean single command (no separator) so this tests the
+        // unknown-exit-code path, not the separator-forces-generic path.
+        let output = "Success: no issues found in 1 source file\n";
 
-        let legacy = compress_with_registry_exit_code(
-            "mypy src && node fail.js",
-            output,
-            None,
-            &empty_registry(),
-        );
+        let legacy = compress_with_registry_exit_code("mypy src", output, None, &empty_registry());
         assert_eq!(legacy.text, "mypy: clean");
     }
 
@@ -2328,8 +2337,9 @@ mod normalize_command_tests {
             split_top_level_pipe("git log | grep fix"),
             PipeSplit::LastStage("grep fix".to_string())
         );
-        // `||` is logical-or, not a pipe.
-        assert_eq!(split_top_level_pipe("a || b"), PipeSplit::None);
+        // `||` is logical-or, not a pipe — but it IS a top-level separator,
+        // so the no-pipe exit forces generic (multiple commands' output).
+        assert_eq!(split_top_level_pipe("a || b"), PipeSplit::Unsafe);
         // inner pipe inside a subshell is not a top-level boundary.
         assert_eq!(split_top_level_pipe("(a | b)"), PipeSplit::None);
         // inner pipe inside $() is not a top-level boundary.
@@ -2363,6 +2373,28 @@ mod normalize_command_tests {
         assert_eq!(
             split_top_level_pipe("cargo test 2>&1 | grep FAIL"),
             PipeSplit::LastStage("grep FAIL".to_string())
+        );
+        // No-pipe separator cases: a top-level separator without a pipe still
+        // forces generic so a head-token compressor can't drop later commands'
+        // output.
+        assert_eq!(
+            split_top_level_pipe("cargo test ; printf SENTINEL"),
+            PipeSplit::Unsafe
+        );
+        assert_eq!(
+            split_top_level_pipe("cargo test && echo done"),
+            PipeSplit::Unsafe
+        );
+        assert_eq!(
+            split_top_level_pipe("cargo test\necho done"),
+            PipeSplit::Unsafe
+        );
+        // Redirects are NOT separators — a single command with a redirect must
+        // still dispatch to its head-token compressor.
+        assert_eq!(split_top_level_pipe("cargo test 2>&1"), PipeSplit::None);
+        assert_eq!(
+            split_top_level_pipe("cargo test &> /dev/null"),
+            PipeSplit::None
         );
     }
 
@@ -2423,6 +2455,62 @@ mod normalize_command_tests {
         assert!(
             compressed.text.contains("SENTINEL"),
             "trailing-chain output must survive, got: {}",
+            compressed.text
+        );
+    }
+
+    /// MUTATION CONTROL: reverting the no-pipe exit in `split_top_level_pipe`
+    /// to ignore `saw_top_separator` (returning `PipeSplit::None` unconditionally)
+    /// makes this test fail — cargo.rs claims the list and drops the sentinel.
+    #[test]
+    fn separator_list_forces_generic_and_preserves_sentinel() {
+        // `cargo test ; printf SENTINEL` — the captured transcript contains both
+        // cargo noise and the sentinel. A head-token cargo compressor would keep
+        // only cargo-shaped lines and silently delete the sentinel. The no-pipe
+        // separator must force generic compression so all output survives.
+        let cargo_noise =
+            "running 1 test\ntest ok_test ... ok\n\ntest result: ok. 1 passed; 0 failed\n";
+        let transcript = format!("{cargo_noise}SENTINEL\n");
+        let compressed = compress_with_registry(
+            "cargo test ; printf SENTINEL",
+            &transcript,
+            &empty_registry(),
+        );
+        assert!(
+            compressed.text.contains("SENTINEL"),
+            "separator-list output must survive generic compression, got: {}",
+            compressed.text
+        );
+    }
+
+    #[test]
+    fn cd_prefix_peel_leaves_no_residual_separator_for_cargo() {
+        // `cd /x && cargo test` — the `cd /x &&` prefix is peeled, leaving a
+        // clean `cargo test` with NO residual separator. Specialized cargo
+        // compression must still engage (not force-generic).
+        let output = "running 1 test\ntest ok_test ... ok\n\ntest result: ok. 1 passed; 0 failed\n";
+        let compressed = compress_with_registry("cd /x && cargo test", output, &empty_registry());
+        // Cargo compressor drops individual "test ... ok" lines in its summary.
+        assert!(
+            !compressed.text.contains("test ok_test ... ok"),
+            "cd-peeled cargo test must still use the cargo compressor, got: {}",
+            compressed.text
+        );
+        assert!(compressed.text.contains("test result: ok"));
+    }
+
+    #[test]
+    fn clean_single_cargo_test_dispatch_byte_identical() {
+        // Control: a clean single `cargo test` (no separator, no pipe) must
+        // continue dispatching to the specialized cargo compressor and produce
+        // the same output as the original specialized-compression behavior.
+        let output = "running 1 test\ntest ok_test ... ok\n\ntest result: ok. 1 passed; 0 failed\n";
+        let compressed = compress_with_registry("cargo test", output, &empty_registry());
+        assert!(compressed.text.contains("running 1 test"));
+        assert!(compressed.text.contains("test result: ok"));
+        assert!(
+            !compressed.text.contains("test ok_test ... ok"),
+            "clean cargo test must keep using the cargo compressor, got: {}",
             compressed.text
         );
     }
