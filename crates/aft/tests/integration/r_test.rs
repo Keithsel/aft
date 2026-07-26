@@ -86,10 +86,16 @@ label = "ready"
             "missing {expected} in outline: {text}"
         );
     }
-    assert!(text.contains("fn"), "functions should have fn kind: {text}");
+    // Signature lines carry the declaration text itself rather than a kind
+    // column, so function coverage is asserted on the R function syntax.
     assert!(
-        text.contains("var"),
-        "assignments should have var kind: {text}"
+        text.contains("function("),
+        "functions should show their function(...) signatures: {text}"
+    );
+    // Assignments likewise render as their own source text.
+    assert!(
+        text.contains("threshold <- 10"),
+        "assignments should show their assignment signatures: {text}"
     );
 
     let zoom_resp = send(

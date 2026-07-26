@@ -214,35 +214,42 @@ fn test_outline_typescript_nested_structure() {
         add_user_line
     );
 
-    // Verify all expected symbol kind abbreviations are present
-    assert!(text.contains(" fn "), "should have fn (function) kind");
-    assert!(text.contains(" cls "), "should have cls (class) kind");
-    assert!(text.contains(" ifc "), "should have ifc (interface) kind");
-    assert!(text.contains(" enum "), "should have enum kind");
+    // Signature lines carry the declaration's own keywords rather than a
+    // kind-abbreviation column, so kind coverage is asserted on the
+    // signature text itself.
     assert!(
-        text.contains(" type "),
-        "should have type (type_alias) kind"
+        text.contains("function "),
+        "should show a function signature"
     );
+    assert!(text.contains("class "), "should show a class signature");
+    assert!(
+        text.contains("interface "),
+        "should show an interface signature"
+    );
+    assert!(text.contains("enum "), "should show an enum signature");
+    assert!(text.contains("type "), "should show a type-alias signature");
 
     // greet should be exported: its line's first non-space chars are "E "
     let greet_line = text
         .lines()
         .find(|l| l.contains("greet") && !l.contains("UserService"))
         .expect("greet line should be in outline");
+    // TypeScript captures the inner declaration, so the signature text has
+    // no export keyword; the minimal E marker is what carries exported-ness.
     assert!(
-        greet_line.trim_start().starts_with("E "),
-        "greet should be exported, got: {:?}",
+        greet_line.trim_start().starts_with("E function "),
+        "greet should carry the E marker before its bare signature, got: {:?}",
         greet_line
     );
 
-    // internalHelper should not be exported: its line's first non-space chars are "- "
+    // internalHelper is a plain function: no export keyword and no marker.
     let internal_line = text
         .lines()
         .find(|l| l.contains("internalHelper"))
         .expect("internalHelper line should be in outline");
     assert!(
-        internal_line.trim_start().starts_with("- "),
-        "internalHelper should not be exported, got: {:?}",
+        internal_line.trim_start().starts_with("function "),
+        "internalHelper should render its bare signature, got: {:?}",
         internal_line
     );
 
@@ -266,13 +273,15 @@ fn test_outline_python_multi_level_nesting() {
         .as_str()
         .expect("text field should be a string");
 
-    // OuterClass should be present at top level (2-space indent: starts with "  E" or "  -")
+    // OuterClass should be present at top level. Signature lines carry no
+    // visibility/kind prefix, so top-level membership is asserted on the
+    // indentation itself: exactly two spaces before the content.
     let outer_class_line = text
         .lines()
         .find(|l| l.contains("OuterClass"))
         .expect("OuterClass should be in outline");
     assert!(
-        outer_class_line.starts_with("  E") || outer_class_line.starts_with("  -"),
+        outer_class_line.starts_with("  ") && !outer_class_line.starts_with("   "),
         "OuterClass should be at top level (2-space indent), got: {:?}",
         outer_class_line
     );
@@ -283,8 +292,8 @@ fn test_outline_python_multi_level_nesting() {
         .find(|l| l.contains("InnerClass"))
         .expect("InnerClass should be in outline");
     assert!(
-        !(inner_class_line.starts_with("  E") || inner_class_line.starts_with("  -")),
-        "InnerClass should be nested, not at top level, got: {:?}",
+        inner_class_line.starts_with("   "),
+        "InnerClass should be nested deeper than top level, got: {:?}",
         inner_class_line
     );
 
@@ -294,8 +303,8 @@ fn test_outline_python_multi_level_nesting() {
         .find(|l| l.contains("inner_method"))
         .expect("inner_method should be in outline");
     assert!(
-        !(inner_method_line.starts_with("  E") || inner_method_line.starts_with("  -")),
-        "inner_method should be nested, not at top level, got: {:?}",
+        inner_method_line.starts_with("   "),
+        "inner_method should be nested deeper than top level, got: {:?}",
         inner_method_line
     );
 
