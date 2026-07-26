@@ -269,11 +269,22 @@ impl BindTrust {
 pub(super) fn trust_for_principal(principal: &Option<Principal>) -> BindTrust {
     match principal {
         Some(Principal::Direct) => BindTrust::FirstParty,
+        // Module renames are flag-days: the daemon registry refuses duplicate
+        // active ids, so a renaming module cannot advertise both names during
+        // its transition. This allowlist is DIALLED, not dialling — it must
+        // accept a module's NEW name in a released binary before the module
+        // starts using it, and the old name stays until the flip has settled.
+        // That is why transitional pairs appear here: llm-runner/broca was the
+        // previous rename, alfonso-core/prefrontal is the current one. When
+        // retiring an old name, confirm the fleet no longer spawns it — a
+        // stale entry here is inert, but a missing one silently downgrades a
+        // first-party module to Untrusted and revokes its bash access.
         Some(Principal::Reserved { module_id })
             if module_id == "llm-runner"
                 || module_id == "aft"
                 || module_id == "broca"
-                || module_id == "alfonso-core" =>
+                || module_id == "alfonso-core"
+                || module_id == "prefrontal" =>
         {
             BindTrust::FirstParty
         }
@@ -6257,6 +6268,20 @@ mod tests {
         assert_eq!(
             trust_for_principal(&Some(Principal::Reserved {
                 module_id: "aft".to_string(),
+            })),
+            BindTrust::FirstParty
+        );
+        // Both halves of each transitional rename pair stay first-party
+        // until the flip settles (see the allowlist comment).
+        assert_eq!(
+            trust_for_principal(&Some(Principal::Reserved {
+                module_id: "alfonso-core".to_string(),
+            })),
+            BindTrust::FirstParty
+        );
+        assert_eq!(
+            trust_for_principal(&Some(Principal::Reserved {
+                module_id: "prefrontal".to_string(),
             })),
             BindTrust::FirstParty
         );
