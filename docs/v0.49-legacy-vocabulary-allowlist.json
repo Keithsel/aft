@@ -98,8 +98,8 @@
     },
     {
       "path": "crates/aft/src/commands/outline.rs",
-      "location": "line 1126, column 70",
-      "line": 1126,
+      "location": "line 1172, column 70",
+      "line": 1172,
       "column": 70,
       "token": "filePath",
       "class": "rust-compatibility",
