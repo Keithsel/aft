@@ -18,20 +18,13 @@ name: Bump OpenCode pin
 # 1000 req/hr authenticated GitHub API budget, so it never hits the
 # anonymous rate limit the OpenCode installer does.
 #
-# IMPORTANT — `GITHUB_TOKEN` and downstream workflow triggers:
-# Per https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow,
-# events created by `GITHUB_TOKEN` (push, pull_request, etc.) do NOT
-# trigger new workflow runs. So opening this PR with `gh pr create` and
-# pushing the branch with the default token will NOT auto-run Tests.
-# `workflow_dispatch` and `repository_dispatch` are exceptions, so we
-# dispatch Tests explicitly after opening the PR. Tests' `workflow_dispatch`
-# input takes the branch ref so the run is gated on the bumped pin.
-#
-# If you want PR-driven runs (so Tests appears as a check on the PR
-# itself, not as a separate workflow_dispatch run), set the
-# `BUMP_OPENCODE_PAT` repo secret to a PAT with `repo` + `workflow` scope.
-# When present we use it for `git push` and `gh pr create`; PR events
-# from a PAT DO trigger downstream workflows.
+# TOKENS: the org blocks `GITHUB_TOKEN` from creating pull requests
+# outright ("GitHub Actions is not permitted to create or approve pull
+# requests"), so the PR step mints a CK CI app token scoped to this repo
+# and uses it for both the branch push and `gh pr create`. App-token PR
+# events trigger downstream workflows normally, so Tests runs as a real
+# PR check. If the app secrets are ever removed, this lane fails at the
+# mint step with a clear error rather than at PR creation.
 
 on:
   schedule:
@@ -98,16 +91,29 @@ jobs:
         run: |
           echo "${{ steps.latest.outputs.version }}" > .github/opencode-version.txt
 
+      # Org policy blocks GITHUB_TOKEN from creating pull requests
+      # ("GitHub Actions is not permitted to create or approve pull
+      # requests"), which made every run of this lane fail at the PR step
+      # for its entire history. The CK CI app can create PRs, and PR events
+      # from an app token trigger downstream workflows the way PAT events
+      # do, so mint an app token scoped to this repo and use it for both
+      # the branch push and `gh pr create`.
+      - name: Mint PR token
+        if: steps.compare.outputs.drift == 'true'
+        id: pr_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CK_CI_APP_ID }}
+          private-key: ${{ secrets.CK_CI_APP_PRIVATE_KEY }}
+          owner: cortexkit
+          repositories: aft
+
       - name: Open PR
         if: steps.compare.outputs.drift == 'true'
         id: pr
         env:
-          # Prefer a PAT if the repo owner has set one — PR events from a PAT
-          # actually trigger downstream workflows (Tests). Fall back to the
-          # default GITHUB_TOKEN, which works for opening the PR but won't
-          # auto-trigger Tests; the next step dispatches Tests explicitly.
-          GH_TOKEN: ${{ secrets.BUMP_OPENCODE_PAT || secrets.GITHUB_TOKEN }}
-          PAT_PRESENT: ${{ secrets.BUMP_OPENCODE_PAT != '' && 'yes' || '' }}
+          GH_TOKEN: ${{ steps.pr_token.outputs.token }}
+          PAT_PRESENT: "yes"
         run: |
           set -euo pipefail
           old="${{ steps.current.outputs.version }}"
