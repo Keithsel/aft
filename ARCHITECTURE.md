@@ -58,7 +58,7 @@
 
 **Protocol and command layer:**
 - Purpose: Accept NDJSON requests, route tool calls via the unified `tool_call` command, and dispatch them to focused command handlers.
-- Location: `crates/aft/src/main.rs`, `crates/aft/src/protocol.rs`, `crates/aft/src/commands/`, `crates/aft/src/run_tool_call.rs`, `crates/aft/src/subc_translate.rs`, `crates/aft/src/subc_format.rs`
+- Location: `crates/aft/src/main.rs`, `crates/aft/src/protocol.rs`, `crates/aft/src/commands/`, `crates/aft/src/run_tool_call.rs`, `crates/aft/src/runtime_drain.rs`, `crates/aft/src/subc_translate.rs`, `crates/aft/src/subc_format.rs`
 - Contains: Request dispatch, response encoding, a unified `tool_call` routing engine, tool-to-command translation mapping, server-rendered agent-facing text formatting (with directory outlines formatted as text unwrapping JSON envelopes), control channel 0 health check responder, and standalone command handlers for read/write/edit/apply_patch/delete_file/move_file/outline/zoom/bash/bash_orchestrate/bash_status/bash_wait_detach/batch/grep/glob/search/imports/refactor/LSP/inspect/conflicts/checkpoints/state
 - Depends on: `crates/aft/src/context.rs`, `crates/aft/src/parser.rs`, `crates/aft/src/callgraph.rs`, `crates/aft/src/callgraph_store/mod.rs`, `crates/aft/src/edit.rs`, `crates/aft/src/semantic_index.rs`, `crates/aft/src/search_index.rs`, `crates/aft/src/compress/`
 - Used by: `packages/aft-bridge/src/bridge.ts`
