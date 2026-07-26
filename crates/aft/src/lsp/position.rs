@@ -115,16 +115,22 @@ pub fn url_to_path(url: &Url) -> Result<PathBuf, LspError> {
                 continue;
             }
             path.push('\\');
-            path.push_str(segment);
+            path.push_str(&decode_uri_segment(segment)?);
         }
         return Ok(normalize_lookup_path(&PathBuf::from(path)));
     }
 
     let path = url.path();
     if path.len() >= 4 && path.as_bytes()[0] == b'/' && is_ascii_drive_prefix(&path[1..]) {
-        return Ok(normalize_lookup_path(&PathBuf::from(
-            path[1..].replace('/', "\\"),
-        )));
+        // Decode each '/'-delimited segment separately and rejoin with '\\'.
+        // Splitting before decoding (instead of decoding the whole path) keeps
+        // an encoded `%2F` inside one segment from becoming a real separator.
+        let decoded = path[1..]
+            .split('/')
+            .map(decode_uri_segment)
+            .collect::<Result<Vec<_>, _>>()?
+            .join("\\");
+        return Ok(normalize_lookup_path(&PathBuf::from(decoded)));
     }
 
     url.to_file_path()
@@ -201,6 +207,59 @@ fn encode_uri_path(path: &str) -> String {
         .join("/")
 }
 
+/// Percent-decode a single URI path segment into one filesystem path component.
+///
+/// Decoding is per segment, never over a whole path, so an encoded separator
+/// (`%2F` for '/' or `%5C` for '\\') inside a segment is decoded and then
+/// rejected rather than silently splitting the path. Whole-path decoding would
+/// let a server that echoes our URIs smuggle extra directory levels (or a NUL)
+/// into the path we cache diagnostics under. A malformed `%` escape that is not
+/// followed by two hex digits is copied through literally, matching how the
+/// `url` crate serializes such input.
+fn decode_uri_segment(segment: &str) -> Result<String, LspError> {
+    let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hi = bytes.get(i + 1).and_then(hex_value);
+            let lo = bytes.get(i + 2).and_then(hex_value);
+            if let (Some(hi), Some(lo)) = (hi, lo) {
+                decoded.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[i]);
+        i += 1;
+    }
+
+    // Refuse invalid UTF-8 outright: a wrong path key silently eats push
+    // diagnostics, so a refused path is safer than a lossily-replaced one.
+    let decoded = String::from_utf8(decoded).map_err(|_| {
+        LspError::NotFound(format!(
+            "URI segment '{segment}' is not valid UTF-8 after percent-decoding"
+        ))
+    })?;
+
+    if decoded.contains(['/', '\\', '\0']) {
+        return Err(LspError::NotFound(format!(
+            "URI segment '{segment}' decodes to a path separator or NUL"
+        )));
+    }
+
+    Ok(decoded)
+}
+
+fn hex_value(byte: &u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn path_display(path: &str) -> String {
     path.replace('/', std::path::MAIN_SEPARATOR_STR)
 }
@@ -255,5 +314,69 @@ mod tests {
 
         assert_eq!(uri.as_str(), "file:///tmp/aft-lsp-position.rs");
         assert_eq!(url_to_path(&uri).expect("path"), PathBuf::from(path));
+    }
+
+    // The drive-letter and UNC decode branches below run on every platform
+    // whenever a drive/UNC-shaped file URI is handed in, so these tests are
+    // deliberately NOT cfg(windows)-gated: a regression must fail CI on Linux
+    // too, not only on Windows runners.
+
+    // Regression guard for the common case: an already-unescaped ASCII path
+    // must decode to byte-identical output (no behavior change from adding
+    // percent-decoding).
+    #[test]
+    fn plain_ascii_drive_uri_is_byte_identical() {
+        let url = Url::parse("file:///C:/repo/src/main.rs").expect("url");
+        assert_eq!(
+            url_to_path(&url).expect("path"),
+            PathBuf::from(r"C:\repo\src\main.rs")
+        );
+    }
+
+    #[test]
+    fn drive_uri_with_space_decodes() {
+        let url = Url::parse("file:///C:/repo/space%20dir/main.rs").expect("url");
+        assert_eq!(
+            url_to_path(&url).expect("path"),
+            PathBuf::from(r"C:\repo\space dir\main.rs")
+        );
+    }
+
+    #[test]
+    fn drive_uri_with_utf8_segment_decodes() {
+        // %C3%A9 is the UTF-8 encoding of 'é'.
+        let url = Url::parse("file:///C:/repo/caf%C3%A9/main.rs").expect("url");
+        assert_eq!(
+            url_to_path(&url).expect("path"),
+            PathBuf::from("C:\\repo\\café\\main.rs")
+        );
+    }
+
+    #[test]
+    fn unc_uri_with_space_decodes() {
+        let url = Url::parse("file://server/share/space%20dir/file.rs").expect("url");
+        assert_eq!(
+            url_to_path(&url).expect("path"),
+            PathBuf::from(r"\\server\share\space dir\file.rs")
+        );
+    }
+
+    #[test]
+    fn unc_uri_with_utf8_segment_decodes() {
+        let url = Url::parse("file://server/share/caf%C3%A9/file.rs").expect("url");
+        assert_eq!(
+            url_to_path(&url).expect("path"),
+            PathBuf::from(r"\\server\share\café\file.rs")
+        );
+    }
+
+    #[test]
+    fn encoded_separator_in_segment_is_rejected() {
+        // An encoded '%2F' must not smuggle a '/' into a single path component.
+        let drive = Url::parse("file:///C:/repo/a%2Fb/main.rs").expect("url");
+        assert!(url_to_path(&drive).is_err());
+
+        let unc = Url::parse("file://server/share/a%2Fb/file.rs").expect("url");
+        assert!(url_to_path(&unc).is_err());
     }
 }
