@@ -1885,6 +1885,10 @@ impl CallGraphStore {
             verify_writer_lease(&writer_lease)?;
             publish_pointer(callgraph_dir, project_key, &generation)?;
             gc_old_generations(callgraph_dir, project_key, &generation);
+            // Store-wide orphan sweep on the same cadence: reclaims aged build
+            // temps for roots that no longer build here, which the per-root GC
+            // above never reaches.
+            sweep_orphaned_build_temps_store_wide(callgraph_dir);
             Ok(())
         });
         if matches!(publication, Err(CallGraphStoreError::Superseded)) {
@@ -5731,6 +5735,106 @@ fn remove_sqlite_sidecars(path: &Path) {
     let _ = std::fs::remove_file(PathBuf::from(format!("{path_text}-wal")));
     let _ = std::fs::remove_file(PathBuf::from(format!("{path_text}-shm")));
     let _ = std::fs::remove_file(PathBuf::from(format!("{path_text}-journal")));
+}
+
+/// Minimum age before a cold-build temporary is treated as orphaned and deleted.
+///
+/// A cold build writes `<key>.g...sqlite.tmp.<pid>.<ts>` and renames it into
+/// place on success; a build that dies (process kill, crash, host restart) leaves
+/// the temporary behind. The largest observed cold build finishes well under a
+/// day, so a temporary that has sat for 24 hours belongs to a dead build that will
+/// never rename. A live build's temporary is minutes old at most.
+///
+/// The predicate is deliberately AGE-based, not pid-liveness. Pid reuse makes a
+/// liveness check read false-positive on exactly the oldest files — the ones most
+/// worth deleting: in production an orphan's embedded pid had been recycled to an
+/// unrelated live process, so "is the pid alive?" answered yes for garbage. Age
+/// cannot lie that way, so it is the honest orphan predicate.
+const ORPHANED_BUILD_TEMP_MIN_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Best-effort store-wide sweep of orphaned cold-build temporaries. Runs at the
+/// same cadence as [`gc_old_generations`] (after a generation is published) but,
+/// unlike it, is not scoped to the building root: it covers every directory in the
+/// callgraph store so orphans left by a root that STOPPED building are reclaimed.
+///
+/// That last case is the production hole this fixes. The per-root cleanup in
+/// [`gc_old_generations`] only fires when a root actually builds, so when activity
+/// moves away (e.g. the root-keyed migration moved builds to a new store) the old
+/// store's orphans become permanent — gigabytes accumulated in a legacy store
+/// whose roots no longer built there, while the active store stayed clean. A
+/// sibling root that still builds triggers this pass and cleans both layouts.
+fn sweep_orphaned_build_temps_store_wide(callgraph_dir: &Path) {
+    sweep_orphaned_build_temps(callgraph_dir);
+    let Some(storage_root) = root_storage_dir(callgraph_dir) else {
+        return;
+    };
+    let domain = crate::root_cache::RootCacheDomain::Callgraph.as_str();
+
+    // Root-keyed layout: every `<storage>/callgraph/<key>` directory.
+    if let Ok(entries) = std::fs::read_dir(storage_root.join(domain)) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                sweep_orphaned_build_temps(&entry.path());
+            }
+        }
+    }
+
+    // Legacy per-harness layout: every `<storage>/<harness>/callgraph` directory.
+    if let Ok(entries) = std::fs::read_dir(&storage_root) {
+        for entry in entries.flatten() {
+            let legacy_dir = entry.path().join(domain);
+            if legacy_dir.is_dir() {
+                sweep_orphaned_build_temps(&legacy_dir);
+            }
+        }
+    }
+}
+
+/// Sweep one callgraph directory, removing build temporaries older than
+/// [`ORPHANED_BUILD_TEMP_MIN_AGE`].
+fn sweep_orphaned_build_temps(callgraph_dir: &Path) {
+    sweep_orphaned_build_temps_older_than(callgraph_dir, ORPHANED_BUILD_TEMP_MIN_AGE);
+}
+
+/// Inner sweep with an explicit age threshold so tests can exercise the predicate.
+/// See [`ORPHANED_BUILD_TEMP_MIN_AGE`] for why the predicate is age, not pid.
+fn sweep_orphaned_build_temps_older_than(callgraph_dir: &Path, min_age: Duration) {
+    let now = SystemTime::now();
+    let Ok(entries) = std::fs::read_dir(callgraph_dir) else {
+        return;
+    };
+    let mut removed_any = false;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        // Build-temporary shape: `<key>.g...sqlite.tmp.<pid>.<ts>`. The
+        // `-journal`/`-wal`/`-shm` sidecars append their suffix AFTER the temp
+        // name, so they still contain `.sqlite.tmp.` and match here too. Anything
+        // without that substring — a completed `.sqlite` generation, a pointer, a
+        // read-marker dir — is left alone: those belong to generation GC.
+        if !name.contains(".sqlite.tmp.") {
+            continue;
+        }
+        let mtime = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .unwrap_or(now);
+        if now.duration_since(mtime).unwrap_or(Duration::ZERO) < min_age {
+            continue;
+        }
+        // Deletion races a concurrent build finishing: that build renames the temp
+        // into place, so the file is gone by the time we unlink. The 24h age makes
+        // this overlap practically impossible, but treat a missing file as success
+        // (the rename won) rather than an error, and never touch a path that does
+        // not match the temporary shape above.
+        match std::fs::remove_file(entry.path()) {
+            Ok(()) => removed_any = true,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {}
+        }
+    }
+    if removed_any {
+        crate::fs_lock::sync_parent(callgraph_dir);
+    }
 }
 
 /// Bound the cold-build's tree-sitter pass to half the cores (cap 8) instead of
@@ -11107,6 +11211,122 @@ mod cold_build_insert_tests {
         assert!(dir.path().join(&current).is_file());
         assert!(dir.path().join(&previous).is_file());
         assert!(!dir.path().join(&old).exists());
+    }
+
+    fn write_build_temp_with_age(dir: &Path, name: &str, age: Duration) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, b"temp placeholder").unwrap();
+        let mtime = SystemTime::now().checked_sub(age).unwrap_or(UNIX_EPOCH);
+        filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(mtime)).unwrap();
+        path
+    }
+
+    #[test]
+    fn orphan_temp_sweep_removes_aged_orphan_and_journal_but_spares_fresh() {
+        let dir = tempdir().unwrap();
+        // One directory holds both an aged orphan (with its journal sidecar) and a
+        // fresh temporary, so this proves the sweep SELECTS by age rather than
+        // deleting everything in the directory.
+        let aged = "project.g100.1.sqlite.tmp.1.200";
+        let aged_journal = "project.g100.1.sqlite.tmp.1.200-journal";
+        let fresh = "project.g300.1.sqlite.tmp.1.400";
+        let aged_age = ORPHANED_BUILD_TEMP_MIN_AGE + Duration::from_secs(60);
+        write_build_temp_with_age(dir.path(), aged, aged_age);
+        write_build_temp_with_age(dir.path(), aged_journal, aged_age);
+        write_build_temp_with_age(dir.path(), fresh, Duration::ZERO);
+
+        sweep_orphaned_build_temps(dir.path());
+
+        assert!(
+            !dir.path().join(aged).exists(),
+            "aged orphan must be removed"
+        );
+        assert!(
+            !dir.path().join(aged_journal).exists(),
+            "aged journal sidecar must be removed"
+        );
+        assert!(
+            dir.path().join(fresh).is_file(),
+            "fresh temporary must survive"
+        );
+    }
+
+    #[test]
+    fn orphan_temp_sweep_reaches_legacy_store_for_root_with_no_pointer_or_build() {
+        let storage = tempdir().unwrap();
+        let storage_root = storage.path();
+        // The production shape: a legacy per-harness store whose root no longer
+        // builds there — no `.current` pointer, no running build — so the per-root
+        // cleanup never fires for it. A sibling root still building in the
+        // root-keyed store triggers the store-wide sweep, which must reach into the
+        // legacy directory and reclaim the orphan.
+        let legacy_dir = storage_root.join("opencode").join("callgraph");
+        fs::create_dir_all(&legacy_dir).unwrap();
+        let orphan = "deadbeef.g100.1.sqlite.tmp.1.200";
+        write_build_temp_with_age(
+            &legacy_dir,
+            orphan,
+            ORPHANED_BUILD_TEMP_MIN_AGE + Duration::from_secs(60),
+        );
+        assert!(
+            !legacy_dir.join("deadbeef.current").exists(),
+            "the dead root has no current pointer"
+        );
+
+        let root_keyed_dir = storage_root.join("callgraph").join("livekey");
+        fs::create_dir_all(&root_keyed_dir).unwrap();
+
+        sweep_orphaned_build_temps_store_wide(&root_keyed_dir);
+
+        assert!(
+            !legacy_dir.join(orphan).exists(),
+            "legacy orphan must be reclaimed by the store-wide sweep"
+        );
+    }
+
+    #[test]
+    fn orphan_temp_sweep_negative_control_age_predicate_is_what_spares_fresh() {
+        // NEGATIVE CONTROL, mutation-proved: forcing the age predicate to accept
+        // everything (min_age = 0) removes the fresh temporary that the real 24h
+        // threshold spares in the test above. If a mutation to the age check leaves
+        // the fresh file in place here, the predicate is no longer doing the
+        // selection work the fresh-survives assertion relies on.
+        let dir = tempdir().unwrap();
+        let fresh = "project.g300.1.sqlite.tmp.1.400";
+        write_build_temp_with_age(dir.path(), fresh, Duration::ZERO);
+
+        sweep_orphaned_build_temps_older_than(dir.path(), Duration::ZERO);
+
+        assert!(
+            !dir.path().join(fresh).exists(),
+            "with the age predicate forced open, the fresh temporary is removed"
+        );
+    }
+
+    #[test]
+    fn orphan_temp_sweep_leaves_completed_generation_and_read_marker_alone() {
+        let dir = tempdir().unwrap();
+        // A completed generation (its name has no `.sqlite.tmp.`) that is old enough
+        // to be swept, plus a live read marker, is generation GC's jurisdiction.
+        // The orphan sweep must not intersect it.
+        let generation = write_generation_with_age(
+            dir.path(),
+            "project",
+            400,
+            ORPHANED_BUILD_TEMP_MIN_AGE + Duration::from_secs(60),
+        );
+        let _marker = crate::root_cache::ReadMarker::create(dir.path(), &generation).unwrap();
+
+        sweep_orphaned_build_temps(dir.path());
+
+        assert!(
+            dir.path().join(&generation).is_file(),
+            "completed generation must survive the orphan sweep"
+        );
+        assert!(
+            crate::root_cache::read_marker_dir(dir.path(), &generation).exists(),
+            "read marker must survive the orphan sweep"
+        );
     }
 
     #[test]
