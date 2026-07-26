@@ -166,10 +166,8 @@ export function coerceOptionalInt(
   max: number,
 ): number | undefined {
   if (v === undefined || v === null || v === "") return undefined;
-  // 0 is an empty-param sentinel ONLY when 0 is out of bounds anyway. For
-  // 0-indexed params (edit's `occurrence`, min=0) it is the most common legal
-  // value — dropping it sent agents into an ambiguous_match loop that told
-  // them to pass the param they had just passed.
+  // 0 is an empty-param sentinel only when 0 is outside the field's accepted
+  // domain. Fields whose contract permits zero must retain it for validation.
   if (typeof v === "number" && (!Number.isFinite(v) || (v === 0 && min > 0))) return undefined;
   const n = typeof v === "string" ? Number(v) : v;
   if (typeof n !== "number" || !Number.isInteger(n)) {
