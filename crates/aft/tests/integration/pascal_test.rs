@@ -85,15 +85,15 @@ end.
         "outline should contain filename"
     );
     assert!(
-        text.contains("E cls  unit MyUnit"),
+        text.contains("E unit MyUnit"),
         "outline should contain unit"
     );
     assert!(
-        text.contains("E cls  TMyClass = class"),
+        text.contains("E TMyClass = class"),
         "outline should contain class"
     );
     assert!(
-        text.contains("E mth  procedure DoSomething"),
+        text.contains("E procedure DoSomething"),
         "outline should contain method"
     );
 

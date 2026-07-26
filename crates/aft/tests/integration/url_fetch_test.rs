@@ -366,7 +366,13 @@ fn html_url_is_converted_to_markdown_before_cache_and_zoom_heading_is_clean() {
         "HTML outline should succeed after conversion: {outline:?}"
     );
     let text = outline["text"].as_str().expect("outline text");
-    let heading_count = text.lines().filter(|line| line.contains(" h ")).count();
+    // Single-file lines carry the signature directly (no `{vis} {kind}` prefix),
+    // so each heading renders as its markdown signature: a leading run of '#'
+    // after the indent and any member '.' prefix.
+    let heading_count = text
+        .lines()
+        .filter(|line| line.trim_start().trim_start_matches('.').starts_with('#'))
+        .count();
     assert_eq!(
         heading_count, 8,
         "outline should contain exactly article headings: {text}"

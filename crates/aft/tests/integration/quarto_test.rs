@@ -46,8 +46,12 @@ fn quarto_outline_extracts_headings() {
         .as_str()
         .expect("text field should be a string");
 
-    // Headings should use 'h' kind abbreviation
-    assert!(text.contains(" h "), "headings should use 'h' kind");
+    // Single-file lines carry the signature directly (no `{vis} {kind}` prefix),
+    // so a heading renders as its markdown signature: a leading run of '#'.
+    assert!(
+        text.lines().any(|l| l.trim_start().starts_with('#')),
+        "headings should render with their markdown signature: {text}"
+    );
 
     // Check if ATX heading is present
     assert!(text.contains("Introduction"), "should have Introduction");

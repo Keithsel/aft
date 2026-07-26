@@ -91,23 +91,23 @@ let localCount = 0;
         "unexpected header: {text:?}"
     );
     assert!(
-        text.contains("E fn   function greet(name: string): string 1:3"),
+        text.contains("E function greet(name: string): string 1:3"),
         "single-file outline should include function signature: {text}"
     );
     assert!(
-        text.contains("- cls  class Worker 5:9"),
+        text.contains("class Worker 5:9"),
         "single-file outline should include class signature: {text}"
     );
     assert!(
-        text.contains(".- mth  run(task: string): void 6:8"),
+        text.contains(".run(task: string): void 6:8"),
         "single-file outline should include nested method signature: {text}"
     );
     assert!(
-        text.contains("E var  const answer = 42; 11:11"),
+        text.contains("E const answer = 42; 11:11"),
         "top-level const should render as variable: {text}"
     );
     assert!(
-        text.contains("- var  let localCount = 0; 12:12"),
+        text.contains("let localCount = 0; 12:12"),
         "top-level let should render as variable: {text}"
     );
     assert!(

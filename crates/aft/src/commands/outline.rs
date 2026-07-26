@@ -40,7 +40,8 @@ pub struct OutlineEntry {
 /// Expects `file` or `files` in request params. Calls `list_symbols()` on the provider,
 /// then builds a nested tree and returns compact tree-text output.
 ///
-/// - Single-file mode: includes signatures (e.g. `E fn  greet(name: string): void 5:12`)
+/// - Single-file mode: includes signatures (e.g. `function greet(name: string): void 5:12`,
+///   or `E function greet(...) 5:12` when exported without a visibility keyword in the signature)
 /// - Multi-file mode: no signatures, paths relative to project_root
 ///
 /// Output is capped at 30KB; if exceeded, truncates with a narrowing hint.
@@ -990,15 +991,60 @@ fn format_entry_compact(entry: &OutlineEntry) -> String {
     format!("{} {:<4} {} {}:{}", vis, kind, entry.name, sl, el)
 }
 
+/// Visibility / export keywords that, when present in a signature line, already
+/// tell the reader whether the symbol is exported: Rust `pub`, Java/C#/Kotlin
+/// `public`, Solidity `external`, TypeScript `export`, and friends. Used to
+/// decide whether the exported-ness marker still has to be prefixed to a line.
+const SIGNATURE_VISIBILITY_KEYWORDS: &[&str] = &[
+    "pub",
+    "public",
+    "export",
+    "open",
+    "external",
+    "internal",
+    "private",
+    "protected",
+];
+
+/// True when the signature text already carries a visibility/export keyword, so
+/// the exported-ness marker need not be repeated as a prefix on the line.
+fn signature_has_visibility(sig: &str) -> bool {
+    sig.split_whitespace().any(|token| {
+        // A modifier may carry a qualifier, e.g. Rust `pub(crate)`; judge the
+        // keyword ahead of any `(`.
+        let head = token.split('(').next().unwrap_or(token);
+        SIGNATURE_VISIBILITY_KEYWORDS.contains(&head)
+    })
+}
+
 /// Format a single entry line for single-file mode (with signature).
+///
+/// When a signature is present it already names the kind (`fn`, `class`, `def`,
+/// ...) and, for languages such as Rust, the visibility (`pub`). Prefixing the
+/// line with `{vis} {kind}` would duplicate information already on the line, so
+/// the prefix is dropped. The one exception is exported-ness the signature text
+/// does not reveal: a TypeScript `export function f()` parses with `export` on
+/// the wrapping export_statement (the captured signature is just `function f()`),
+/// `export { f }` lists and default-export bindings export a symbol whose
+/// declaration has no `export` at all, and Go marks exports by an uppercase first
+/// letter rather than a keyword. For exactly those entries — exported, with no
+/// visibility keyword in the signature — a minimal `E ` marker is kept so
+/// exported-ness is not silently lost.
+///
+/// When there is no signature (the fallback below), the prefix is the only thing
+/// carrying visibility and kind, so it is retained unchanged.
 pub(crate) fn format_entry_with_sig(entry: &OutlineEntry) -> String {
-    let vis = if entry.exported { 'E' } else { '-' };
-    let kind = kind_abbrev(&entry.kind);
     let sl = entry.range.start_line + 1;
     let el = entry.range.end_line + 1;
     if let Some(ref sig) = entry.signature {
-        format!("{} {:<4} {} {}:{}", vis, kind, sig, sl, el)
+        if entry.exported && !signature_has_visibility(sig) {
+            format!("E {} {}:{}", sig, sl, el)
+        } else {
+            format!("{} {}:{}", sig, sl, el)
+        }
     } else {
+        let vis = if entry.exported { 'E' } else { '-' };
+        let kind = kind_abbrev(&entry.kind);
         format!("{} {:<4} {} {}:{}", vis, kind, entry.name, sl, el)
     }
 }
@@ -1617,5 +1663,167 @@ mod tests {
         let tree = build_outline_tree(&symbols);
         assert_eq!(tree.len(), 1, "orphan should be promoted to top level");
         assert_eq!(tree[0].name, "orphan");
+    }
+
+    fn sig_entry(
+        name: &str,
+        kind: &str,
+        signature: Option<&str>,
+        exported: bool,
+        start_line: u32,
+        end_line: u32,
+    ) -> OutlineEntry {
+        OutlineEntry {
+            name: name.to_string(),
+            kind: kind.to_string(),
+            range: Range {
+                start_line,
+                start_col: 0,
+                end_line,
+                end_col: 0,
+            },
+            signature: signature.map(String::from),
+            exported,
+            members: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn signature_lines_drop_the_redundant_vis_kind_prefix() {
+        // Rust `pub fn`: visibility and kind are both in the signature, so no prefix.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry(
+                "resolve",
+                "function",
+                Some("pub fn resolve(id: u64) -> Result<()>"),
+                true,
+                9,
+                20,
+            )),
+            "pub fn resolve(id: u64) -> Result<()> 10:21"
+        );
+        // Rust private `fn`: not exported, signature carries the kind; no prefix.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry(
+                "helper",
+                "function",
+                Some("fn helper()"),
+                false,
+                0,
+                2
+            )),
+            "fn helper() 1:3"
+        );
+        // Python `def`: no export concept, so no marker at all.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry(
+                "compute",
+                "function",
+                Some("def compute(value):"),
+                false,
+                4,
+                7,
+            )),
+            "def compute(value): 5:8"
+        );
+    }
+
+    #[test]
+    fn exported_without_visibility_keyword_keeps_a_minimal_marker() {
+        // TypeScript `export function greet()` parses with `export` on the wrapping
+        // export_statement, so the captured signature is just `function greet()`;
+        // the `E` marker is the only signal of exported-ness and must be kept.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry(
+                "greet",
+                "function",
+                Some("function greet(name: string): string"),
+                true,
+                0,
+                2,
+            )),
+            "E function greet(name: string): string 1:3"
+        );
+        // Go exports by an uppercase first letter, with no keyword in the signature.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry(
+                "Parse",
+                "function",
+                Some("func Parse(input string) (*Tree, error)"),
+                true,
+                0,
+                5,
+            )),
+            "E func Parse(input string) (*Tree, error) 1:6"
+        );
+        // A signature that already carries a visibility keyword needs no marker,
+        // even when exported.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry(
+                "run",
+                "method",
+                Some("public void run()"),
+                true,
+                0,
+                1
+            )),
+            "public void run() 1:2"
+        );
+    }
+
+    #[test]
+    fn no_signature_fallback_keeps_the_vis_kind_prefix() {
+        // Without a signature the prefix is the only carrier of visibility and
+        // kind, so it is retained verbatim.
+        assert_eq!(
+            format_entry_with_sig(&sig_entry("answer", "variable", None, true, 0, 0)),
+            "E var  answer 1:1"
+        );
+        assert_eq!(
+            format_entry_with_sig(&sig_entry("local", "variable", None, false, 1, 1)),
+            "- var  local 2:2"
+        );
+    }
+
+    #[test]
+    fn dropping_the_prefix_removes_exactly_the_prefix_bytes() {
+        // Golden fixture: the new line must be the old line minus the
+        // `{vis} {kind:<4} ` prefix, with the signature and range bytes — and
+        // therefore the line positions — left untouched.
+        let entry = sig_entry(
+            "resolve",
+            "function",
+            Some("pub fn resolve(id: u64)"),
+            true,
+            9,
+            20,
+        );
+        let new = format_entry_with_sig(&entry);
+        let old = format!("E {:<4} {} {}:{}", "fn", "pub fn resolve(id: u64)", 10, 21);
+        assert_eq!(old, "E fn   pub fn resolve(id: u64) 10:21");
+        assert_eq!(new, "pub fn resolve(id: u64) 10:21");
+        // Exactly the prefix bytes are removed; nothing else moves. Reintroducing
+        // the unconditional prefix makes new == old and this delta drops to zero.
+        assert_eq!(old.len() - new.len(), "E fn   ".len());
+        assert!(
+            old.ends_with(&new),
+            "only the prefix may change: {old:?} -> {new:?}"
+        );
+    }
+
+    #[test]
+    fn signature_visibility_detection() {
+        assert!(signature_has_visibility("pub fn f()"));
+        assert!(signature_has_visibility("pub(crate) fn f()"));
+        assert!(signature_has_visibility("public void f()"));
+        assert!(signature_has_visibility("export function f()"));
+        assert!(signature_has_visibility("external function f()"));
+        // A symbol name that merely contains a keyword substring is not a marker.
+        assert!(!signature_has_visibility("fn publish()"));
+        assert!(!signature_has_visibility(
+            "function greet(name: string): string"
+        ));
+        assert!(!signature_has_visibility("def compute(value):"));
+        assert!(!signature_has_visibility("func Parse(input string)"));
     }
 }

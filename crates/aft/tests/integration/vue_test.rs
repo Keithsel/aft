@@ -59,15 +59,15 @@ fn vue_outline_returns_top_level_sfc_sections() {
     let text = resp["text"].as_str().expect("outline text");
     assert!(text.starts_with("App.vue\n"), "unexpected outline: {text}");
     assert!(
-        text.contains("- h    <template> 1:6"),
+        text.contains("<template> 1:6"),
         "missing template section: {text}"
     );
     assert!(
-        text.contains("- h    <script setup lang=\"ts\"> 8:17"),
+        text.contains("<script setup lang=\"ts\"> 8:17"),
         "missing script section: {text}"
     );
     assert!(
-        text.contains("- h    <style scoped> 19:23"),
+        text.contains("<style scoped> 19:23"),
         "missing style section: {text}"
     );
 

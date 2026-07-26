@@ -51,8 +51,12 @@ fn markdown_outline_extracts_headings() {
         .as_str()
         .expect("text field should be a string");
 
-    // Headings should use 'h' kind abbreviation
-    assert!(text.contains(" h "), "headings should use 'h' kind");
+    // Single-file lines carry the signature directly (no `{vis} {kind}` prefix),
+    // so a heading renders as its markdown signature: a leading run of '#'.
+    assert!(
+        text.contains("# Project Title"),
+        "headings should render with their markdown signature: {text}"
+    );
 
     // All headings should be present in the outline
     assert!(text.contains("Project Title"), "should have Project Title");
@@ -62,12 +66,9 @@ fn markdown_outline_extracts_headings() {
     assert!(text.contains("Architecture"), "should have Architecture");
     assert!(text.contains("Appendix"), "should have Appendix");
 
-    // Exactly 2 top-level headings: lines with 2-space indent (starts with "  E " or "  - ")
-    // and containing " h " kind
-    let top_level_count = text
-        .lines()
-        .filter(|l| (l.starts_with("  E ") || l.starts_with("  - ")) && l.contains(" h "))
-        .count();
+    // Exactly 2 top-level headings: lines indented one level (two spaces) whose
+    // signature starts with '#'. Nested headings are members and carry a '.' prefix.
+    let top_level_count = text.lines().filter(|l| l.starts_with("  #")).count();
     assert_eq!(
         top_level_count, 2,
         "expected 2 top-level headings (Project Title and Appendix), got: {}",

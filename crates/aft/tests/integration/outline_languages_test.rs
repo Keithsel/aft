@@ -31,10 +31,15 @@ fn outline_text(aft: &mut AftProcess, file: &Path) -> String {
     resp["text"].as_str().expect("outline text").to_string()
 }
 
+/// Assert that a symbol with the given name appears in a single-file outline.
+///
+/// Single-file signature lines carry the signature text directly, with no
+/// `{vis} {kind}` prefix — the kind is visible in the signature itself — so no
+/// fixed token position holds the kind abbreviation. We verify the symbol name
+/// is present on some line; `kind` is retained for the failure message.
 fn assert_symbol_kind(text: &str, kind: &str, name: &str) {
     assert!(
-        text.lines()
-            .any(|line| { line.split_whitespace().nth(1) == Some(kind) && line.contains(name) }),
+        text.lines().any(|line| line.contains(name)),
         "missing {kind} symbol {name} in outline: {text}"
     );
 }
@@ -177,10 +182,11 @@ fn outline_html_symbols_include_heading_hierarchy() {
             "missing {expected} in outline: {text}"
         );
     }
-    // Should show heading kind abbreviation
+    // Single-file lines carry the signature directly (no `{vis} {kind}` prefix),
+    // so a heading renders as its tag plus text rather than an 'h' abbreviation.
     assert!(
-        text.contains(" h "),
-        "should contain heading kind 'h': {text}"
+        text.contains("<h1> Main Title"),
+        "should contain heading signature: {text}"
     );
 
     let status = aft.shutdown();
@@ -215,11 +221,11 @@ object Module {
 
     let text = outline_text(&mut aft, &file);
     for expected in [
-        "E enum enum Color 3:6",
-        "    .E mth  def describe: String = this match { case Red => \"r\"; case Green => \"g\"; case Blue => \"b\" } 5:5",
-        "E var  given intShow: Show[Int] = Show.show(_.toString) 10:10",
-        "E cls  object Module 12:14",
-        "    .E var  given stringEq: Eq[String] = (a, b) => a == b 13:13",
+        "E enum Color 3:6",
+        "    .E def describe: String = this match { case Red => \"r\"; case Green => \"g\"; case Blue => \"b\" } 5:5",
+        "E given intShow: Show[Int] = Show.show(_.toString) 10:10",
+        "E object Module 12:14",
+        "    .E given stringEq: Eq[String] = (a, b) => a == b 13:13",
     ] {
         assert!(
             text.contains(expected),
@@ -696,7 +702,7 @@ fn zoom_html_heading_resolves_explicit_and_legacy_anchors_without_changing_outli
 
     assert_eq!(
         outline_text(&mut aft, &file),
-        "custom-anchors.html\n  - h    <h2> Setup Guide 2:3\n  - h    <h2> Fallback Heading 4:5\n  - h    <h2> Legacy Setup 6:7\n"
+        "custom-anchors.html\n  <h2> Setup Guide 2:3\n  <h2> Fallback Heading 4:5\n  <h2> Legacy Setup 6:7\n"
     );
 
     let explicit = send(
@@ -1180,10 +1186,11 @@ main "$@"
         "missing main in bash outline: {text}"
     );
 
-    // Functions should be marked as functions
+    // Single-file lines carry the signature directly (no `{vis} {kind}` prefix),
+    // so a bash function renders as its signature rather than an 'fn' abbreviation.
     assert!(
-        text.contains("fn"),
-        "bash functions should have 'fn' kind marker: {text}"
+        text.contains("function setup_environment()"),
+        "bash functions should render with their signature: {text}"
     );
 
     let status = aft.shutdown();
