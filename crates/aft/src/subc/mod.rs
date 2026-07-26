@@ -6259,32 +6259,21 @@ mod tests {
             trust_for_principal(&Some(Principal::Direct)),
             BindTrust::FirstParty
         );
-        assert_eq!(
-            trust_for_principal(&Some(Principal::Reserved {
-                module_id: "llm-runner".to_string(),
-            })),
-            BindTrust::FirstParty
-        );
-        assert_eq!(
-            trust_for_principal(&Some(Principal::Reserved {
-                module_id: "aft".to_string(),
-            })),
-            BindTrust::FirstParty
-        );
-        // Both halves of each transitional rename pair stay first-party
-        // until the flip settles (see the allowlist comment).
-        assert_eq!(
-            trust_for_principal(&Some(Principal::Reserved {
-                module_id: "alfonso-core".to_string(),
-            })),
-            BindTrust::FirstParty
-        );
-        assert_eq!(
-            trust_for_principal(&Some(Principal::Reserved {
-                module_id: "prefrontal".to_string(),
-            })),
-            BindTrust::FirstParty
-        );
+        // Every first-party reserved id is asserted BY NAME, in one loop over
+        // the full set, so two failure classes stay distinguishable: an empty
+        // or broken allowlist reddens every name at once, while a dropped
+        // single entry (the rename hazard) reddens exactly the missing name.
+        // Both halves of each transitional rename pair stay listed until the
+        // flip settles (see the allowlist comment).
+        for module_id in ["llm-runner", "aft", "broca", "alfonso-core", "prefrontal"] {
+            assert_eq!(
+                trust_for_principal(&Some(Principal::Reserved {
+                    module_id: module_id.to_string(),
+                })),
+                BindTrust::FirstParty,
+                "reserved module id '{module_id}' must resolve to first-party trust"
+            );
+        }
         assert_eq!(
             trust_for_principal(&Some(Principal::Reserved {
                 module_id: "subc-mcp".to_string(),
