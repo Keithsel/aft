@@ -142,6 +142,12 @@ pub fn apply_update_chunks(
     chunks: &[UpdateFileChunk],
 ) -> Result<String, String> {
     let line_ending = dominant_line_ending(original_content);
+    // Remember at split time whether the file ended with a newline. The join below
+    // must restore the terminator sentinel from this flag: once the lines are in a
+    // buffer, a real trailing empty line (a file ending in two newlines) is
+    // indistinguishable from the split terminator, so re-inferring it there loses
+    // one terminal newline on every update to such files.
+    let had_trailing_newline = original_content.ends_with('\n');
     // Remove CRLF's carriage return before matching, then restore the chosen convention on output.
     let mut original_lines: Vec<String> = original_content
         .split('\n')
@@ -252,7 +258,12 @@ pub fn apply_update_chunks(
         result.splice(start_idx..start_idx + old_len, new_segment);
     }
 
-    if result.last().is_none_or(|line| !line.is_empty()) {
+    // Append the terminator sentinel from the tracked flag instead of inferring it
+    // from the last line's emptiness: a real trailing empty line left behind by a
+    // file ending in two newlines looks exactly like the sentinel, and declining to
+    // push in that case would eat one terminal newline. Files that lacked a trailing
+    // newline keep the historical policy of being normalized to newline-terminated.
+    if had_trailing_newline || result.last().is_none_or(|line| !line.is_empty()) {
         result.push(String::new());
     }
 
@@ -560,12 +571,18 @@ mod tests {
     }
 
     #[test]
-    fn trailing_empty_line_retry_matches_patch_parser_source_514_519() {
+    fn trailing_empty_line_hunk_keeps_real_blank_line() {
         let chunks = [chunk(&["alpha", ""], &["beta", ""])];
 
+        // The full old pattern ["alpha", ""] never matches the one-line file at the
+        // strict tiers; the reflow tier matches just "alpha", so new_lines' trailing
+        // "" survives into the buffer. The join previously absorbed that empty line
+        // as the terminator sentinel (yielding "beta\n"); since the terminator is
+        // now tracked from the original content instead of inferred from the last
+        // line, the empty line is real content and the output gains a blank line.
         assert_eq!(
             apply_update_chunks("alpha\n", "src/trailing.ts", &chunks).unwrap(),
-            "beta\n"
+            "beta\n\n"
         );
     }
 
@@ -628,5 +645,73 @@ mod tests {
             let result = apply_update_chunks(original, "src/lf.txt", &[update]).unwrap();
             assert_eq!(result.as_bytes(), expected);
         }
+    }
+
+    #[test]
+    fn update_preserves_two_terminal_newlines() {
+        // Regression repro: "alpha\n\n" splits to ["alpha", "", ""]; popping the split
+        // terminator leaves a REAL trailing empty line, which the join previously
+        // mistook for the sentinel and emitted "beta\n" (one newline lost).
+        let result = apply_update_chunks(
+            "alpha\n\n",
+            "src/double.txt",
+            &[chunk(&["alpha"], &["beta"])],
+        )
+        .unwrap();
+        assert_eq!(result.as_bytes(), b"beta\n\n");
+    }
+
+    #[test]
+    fn update_keeps_single_terminal_newline() {
+        let result =
+            apply_update_chunks("alpha\n", "src/single.txt", &[chunk(&["alpha"], &["beta"])])
+                .unwrap();
+        assert_eq!(result.as_bytes(), b"beta\n");
+    }
+
+    #[test]
+    fn update_normalizes_unterminated_file_to_newline_terminated() {
+        // Policy preserved from before the terminal-newline fix: apply_patch already
+        // normalized files without a trailing newline to newline-terminated output
+        // (see mixed_and_unterminated_files_follow_dominant_newline_policy), so the
+        // missing newline is deliberately added rather than preserved.
+        let result =
+            apply_update_chunks("alpha", "src/bare.txt", &[chunk(&["alpha"], &["beta"])]).unwrap();
+        assert_eq!(result.as_bytes(), b"beta\n");
+    }
+
+    #[test]
+    fn hunk_that_explicitly_deletes_blank_line_still_deletes_it() {
+        let interior = apply_update_chunks(
+            "alpha\n\nbeta\n",
+            "src/delete-blank.txt",
+            &[chunk(&["alpha", ""], &["beta"])],
+        )
+        .unwrap();
+        assert_eq!(interior.as_bytes(), b"beta\nbeta\n");
+
+        // Deleting the trailing blank line of a two-newline file leaves exactly one
+        // terminal newline: the hunk consumed the real empty line, the sentinel is
+        // still restored.
+        let trailing = apply_update_chunks(
+            "alpha\n\n",
+            "src/delete-trailing.txt",
+            &[chunk(&["alpha", ""], &["beta"])],
+        )
+        .unwrap();
+        assert_eq!(trailing.as_bytes(), b"beta\n");
+    }
+
+    #[test]
+    fn crlf_with_two_terminal_newlines_preserves_majority_convention() {
+        // The CRLF normalization (dominant_line_ending) must compose with the
+        // tracked terminator: both terminal newlines survive, both as CRLF.
+        let result = apply_update_chunks(
+            "alpha\r\n\r\n",
+            "src/crlf-double.txt",
+            &[chunk(&["alpha"], &["beta"])],
+        )
+        .unwrap();
+        assert_eq!(result.as_bytes(), b"beta\r\n\r\n");
     }
 }
