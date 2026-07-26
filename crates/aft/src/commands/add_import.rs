@@ -236,6 +236,41 @@ pub fn handle_add_import(req: &RawRequest, ctx: &AppContext) -> Response {
         }
     }
 
+    // JSON module records expose only a `default` export. The named-import syntax
+    // may spell that export as `{ default as local }`, but every other imported
+    // name is impossible and must be rejected before backup or write.
+    let unsupported_json_names = names
+        .iter()
+        .filter(|name| imports::specifier_imported_name(name) != "default")
+        .collect::<Vec<_>>();
+    if !unsupported_json_names.is_empty()
+        && matches!(
+            lang,
+            LangId::TypeScript | LangId::Tsx | LangId::JavaScript | LangId::Vue
+        )
+        && block.imports.iter().any(|imp| {
+            imp.module_path == module && imports::es_import_attribute_type(imp) == Some("json")
+        })
+    {
+        let unsupported = unsupported_json_names
+            .iter()
+            .map(|name| format!("'{}'", imports::specifier_imported_name(name)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Response::error_with_data(
+            &req.id,
+            "unsupported_json_named_export",
+            format!(
+                "add_import: cannot add named binding(s) {unsupported} from JSON module '{module}': JSON modules expose no named exports other than 'default'"
+            ),
+            serde_json::json!({
+                "file": file,
+                "module": module,
+                "unsupported_names": unsupported_json_names,
+            }),
+        );
+    }
+
     if matches!(lang, LangId::CSharp | LangId::Php)
         && organize_imports::imports_span_multiple_code_regions(&source, lang, &block.imports)
     {

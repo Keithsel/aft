@@ -4,6 +4,24 @@ use super::helpers::{fixture_path, AftProcess};
 use aft::imports::{generate_import_line_with_namespace, parse_file_imports};
 use aft::parser::LangId;
 use std::fs;
+use std::path::Path;
+use std::process::Output;
+
+/// Execute an ES module with Node so runtime import semantics, not only syntax, are checked.
+fn assert_node_succeeds(file: &Path, context: &str) -> Output {
+    let output = std::process::Command::new("node")
+        .arg(file)
+        .output()
+        .expect("Node.js is required for JSON module import regression tests");
+    assert!(
+        output.status.success(),
+        "{context}: Node exited {:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
 
 /// Helper: copy a fixture to a uniquely-named temp file for mutation testing.
 fn temp_copy(fixture_name: &str) -> (tempfile::TempDir, std::path::PathBuf) {
@@ -2626,26 +2644,30 @@ fn generate_ts_namespace_import_line_round_trips_default_and_namespace() {
 
 // --- Merge into existing same-module import ---
 
-/// When the target module already has a named-import statement of the same
-/// kind, `add_import` should merge new `names` into that existing statement
-/// instead of inserting a duplicate `import { ... } from "lib"` line.
-///
-/// Regression for the Pi-reported bug where adding `{ baz }` to a file with
-/// `import { foo } from "lib"` produced two separate `import { ... } from "lib"`
-/// statements that the linter then complained about.
 #[test]
 fn add_import_merges_into_existing_same_module_named_import() {
     let mut aft = AftProcess::spawn();
 
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("merge.ts");
+    let module = dir.path().join("lib.mjs");
+    let file = dir.path().join("merge.mjs");
     fs::write(
-        &file,
-        "import { foo } from \"lib\";\n\nexport function use() {\n  return foo();\n}\n",
+        &module,
+        "export const foo = () => 'foo';\nexport const baz = () => 'baz';\n",
     )
     .unwrap();
+    fs::write(
+        &file,
+        "import { foo } from './lib.mjs';\n\nconsole.log(foo());\n",
+    )
+    .unwrap();
+    assert_eq!(
+        assert_node_succeeds(&file, "ordinary named import before merge")
+            .status
+            .code(),
+        Some(0)
+    );
 
-    // Configure aft against the temp dir as project root.
     aft.send(&format!(
         r#"{{"id":"cfg","command":"configure","harness":"opencode","project_root":{}}}"#,
         crate::helpers::json_string(&dir.path().display())
@@ -2655,7 +2677,7 @@ fn add_import_merges_into_existing_same_module_named_import() {
         &mut aft,
         "merge1",
         file.to_str().unwrap(),
-        "lib",
+        "./lib.mjs",
         Some(&["baz"]),
         None,
         false,
@@ -2669,21 +2691,20 @@ fn add_import_merges_into_existing_same_module_named_import() {
     assert_eq!(resp["added"], true, "should report added=true: {:?}", resp);
 
     let content = fs::read_to_string(&file).unwrap();
-
-    // Single merged statement (no duplicate `from "lib"` line)
-    let from_lib_count =
-        content.matches("from \"lib\"").count() + content.matches("from 'lib'").count();
     assert_eq!(
-        from_lib_count, 1,
-        "should have exactly one statement importing from 'lib':\n{}",
-        content
+        content.matches("./lib.mjs").count(),
+        1,
+        "should have exactly one statement importing from './lib.mjs':\n{content}"
     );
-
-    // Both names present
     assert!(
         content.contains("baz") && content.contains("foo"),
-        "merged statement should contain both names:\n{}",
-        content
+        "merged statement should contain both names:\n{content}"
+    );
+    assert_eq!(
+        assert_node_succeeds(&file, "ordinary named import after merge")
+            .status
+            .code(),
+        Some(0)
     );
 
     aft.shutdown();
@@ -2836,12 +2857,20 @@ import { alpha, zebra } from 'ordinary';\n",
 fn add_and_partial_remove_preserve_es_import_attributes() {
     let mut aft = AftProcess::spawn();
     let dir = tempfile::tempdir().unwrap();
+    let module = dir.path().join("config.json");
     let file = dir.path().join("attributes.mjs");
+    fs::write(&module, "{\"ok\":true}\n").unwrap();
     fs::write(
         &file,
-        "import config from './config.json' with { type: 'json' };\n",
+        "import config from './config.json' with { type: 'json' };\nconsole.log(config.ok);\n",
     )
     .unwrap();
+    assert_eq!(
+        assert_node_succeeds(&file, "JSON default import before alias merge")
+            .status
+            .code(),
+        Some(0)
+    );
     aft.send(&format!(
         r#"{{"id":"cfg-attrs-mutate","command":"configure","harness":"opencode","project_root":{}}}"#,
         crate::helpers::json_string(&dir.path().display())
@@ -2852,7 +2881,7 @@ fn add_and_partial_remove_preserve_es_import_attributes() {
         "add-attrs",
         file.to_str().unwrap(),
         "./config.json",
-        Some(&["extra"]),
+        Some(&["default as configAlias"]),
         None,
         false,
     );
@@ -2860,10 +2889,18 @@ fn add_and_partial_remove_preserve_es_import_attributes() {
     let after_add = fs::read_to_string(&file).unwrap();
     assert_eq!(after_add.matches("./config.json").count(), 1, "{after_add}");
     assert!(
-        after_add.contains("import config, { extra } from './config.json' with { type: 'json' };")
-            || after_add
-                .contains("import config, { extra } from \"./config.json\" with { type: 'json' };"),
-        "add should merge into the attributed import without dropping its clause:\n{after_add}"
+        after_add.contains(
+            "import config, { default as configAlias } from './config.json' with { type: 'json' };"
+        ) || after_add.contains(
+            "import config, { default as configAlias } from \"./config.json\" with { type: 'json' };"
+        ),
+        "a legal alias of the JSON default export should merge without dropping its attribute:\n{after_add}"
+    );
+    assert_eq!(
+        assert_node_succeeds(&file, "JSON default alias after merge")
+            .status
+            .code(),
+        Some(0)
     );
 
     let remove = send_remove_import(
@@ -2871,7 +2908,7 @@ fn add_and_partial_remove_preserve_es_import_attributes() {
         "remove-attrs",
         file.to_str().unwrap(),
         "./config.json",
-        Some("extra"),
+        Some("configAlias"),
     );
     assert_eq!(remove["success"], true, "remove should succeed: {remove:?}");
     let after_remove = fs::read_to_string(&file).unwrap();
@@ -2883,7 +2920,82 @@ fn add_and_partial_remove_preserve_es_import_attributes() {
         after_remove.contains("import config from"),
         "{after_remove}"
     );
-    assert!(!after_remove.contains("extra"), "{after_remove}");
+    assert!(!after_remove.contains("configAlias"), "{after_remove}");
+    assert_eq!(
+        assert_node_succeeds(&file, "JSON default import after partial removal")
+            .status
+            .code(),
+        Some(0)
+    );
+
+    aft.shutdown();
+}
+
+#[test]
+fn add_import_rejects_non_default_json_named_export_without_mutation_or_backup() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+    let module = dir.path().join("config.json");
+    let file = dir.path().join("reject-json-name.mjs");
+    fs::write(&module, "{\"ok\":true}\n").unwrap();
+    let original =
+        "import config from './config.json' with { type: 'json' };\nconsole.log(config.ok);\n";
+    fs::write(&file, original).unwrap();
+    aft.send(&format!(
+        r#"{{"id":"cfg-json-reject","command":"configure","harness":"opencode","project_root":{}}}"#,
+        crate::helpers::json_string(&dir.path().display())
+    ));
+
+    assert_eq!(
+        assert_node_succeeds(&file, "JSON default import before rejected add")
+            .status
+            .code(),
+        Some(0)
+    );
+    let add = send_add_import(
+        &mut aft,
+        "add-invalid-json-name",
+        file.to_str().unwrap(),
+        "./config.json",
+        Some(&["extra"]),
+        None,
+        false,
+    );
+
+    assert_eq!(add["success"], false, "add should be refused: {add:?}");
+    assert_eq!(add["code"], "unsupported_json_named_export", "{add:?}");
+    assert!(
+        add["message"]
+            .as_str()
+            .is_some_and(|message| message
+                .contains("JSON modules expose no named exports other than 'default'")),
+        "the refusal should explain the module constraint: {add:?}"
+    );
+    assert!(
+        add.get("backup_id").is_none(),
+        "a pre-edit refusal must not report a backup: {add:?}"
+    );
+    assert_eq!(fs::read_to_string(&file).unwrap(), original);
+
+    let history = aft.send(&format!(
+        r#"{{"id":"history-json-reject","command":"edit_history","file":{}}}"#,
+        crate::helpers::json_string(&file.display())
+    ));
+    assert_eq!(
+        history["success"], true,
+        "history should succeed: {history:?}"
+    );
+    assert_eq!(
+        history["entries"],
+        serde_json::json!([]),
+        "a rejected add must not take a backup: {history:?}"
+    );
+    assert_eq!(
+        assert_node_succeeds(&file, "JSON default import after rejected add")
+            .status
+            .code(),
+        Some(0)
+    );
 
     aft.shutdown();
 }

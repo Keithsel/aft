@@ -116,6 +116,8 @@ pub enum ImportForm {
         /// Import attributes select the module type, so dropping this clause can
         /// change a valid import into one the runtime refuses to load.
         attribute_clause: Option<String>,
+        /// Decoded value of the clause's `type` attribute, when parsed.
+        attribute_type: Option<String>,
     },
     /// Python `import module` (`from_import = false`) or
     /// `from module import a, b` (`from_import = true`).
@@ -1463,6 +1465,7 @@ fn parse_single_ts_import(source: &str, node: &Node) -> Option<ImportStatement> 
         type_only: is_type_only,
         side_effect: matches!(kind, ImportKind::SideEffect),
         attribute_clause: extract_es_import_attribute_clause(source, node),
+        attribute_type: find_type_attribute(source, *node),
     };
 
     Some(ImportStatement {
@@ -1509,6 +1512,98 @@ pub(crate) fn es_import_attribute_clause(imp: &ImportStatement) -> Option<&str> 
         } => attribute_clause.as_deref(),
         _ => None,
     }
+}
+
+/// Return the semantic value of an ES import's `type` attribute.
+pub(crate) fn es_import_attribute_type(imp: &ImportStatement) -> Option<&str> {
+    match &imp.form {
+        ImportForm::Es { attribute_type, .. } => attribute_type.as_deref(),
+        _ => None,
+    }
+}
+
+fn find_type_attribute(source: &str, node: Node<'_>) -> Option<String> {
+    if node.kind() == "pair" {
+        let key = node
+            .child_by_field_name("key")
+            .or_else(|| node.named_child(0))?;
+        let value = node
+            .child_by_field_name("value")
+            .or_else(|| node.named_child(1))?;
+        if decode_js_attribute_atom(source.get(key.byte_range())?)?.as_str() == "type" {
+            return decode_js_attribute_atom(source.get(value.byte_range())?);
+        }
+    }
+
+    let mut cursor = node.walk();
+    let found = node
+        .children(&mut cursor)
+        .find_map(|child| find_type_attribute(source, child));
+    found
+}
+
+fn decode_js_attribute_atom(text: &str) -> Option<String> {
+    let text = text.trim();
+    let quote = text.as_bytes().first().copied();
+    if !matches!(quote, Some(b'\'') | Some(b'"')) {
+        return Some(text.to_string());
+    }
+    if text.as_bytes().last().copied() != quote || text.len() < 2 {
+        return None;
+    }
+
+    let mut chars = text[1..text.len() - 1].chars();
+    let mut decoded = String::new();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            decoded.push(ch);
+            continue;
+        }
+
+        match chars.next()? {
+            '\n' => {}
+            '\r' => {
+                if chars.clone().next() == Some('\n') {
+                    chars.next();
+                }
+            }
+            'b' => decoded.push('\u{0008}'),
+            'f' => decoded.push('\u{000c}'),
+            'n' => decoded.push('\n'),
+            'r' => decoded.push('\r'),
+            't' => decoded.push('\t'),
+            'v' => decoded.push('\u{000b}'),
+            '0' => decoded.push('\0'),
+            'x' => decoded.push(decode_hex_escape(&mut chars, 2)?),
+            'u' => {
+                let digits = if chars.clone().next() == Some('{') {
+                    chars.next();
+                    let mut digits = String::new();
+                    loop {
+                        let ch = chars.next()?;
+                        if ch == '}' {
+                            break;
+                        }
+                        digits.push(ch);
+                    }
+                    digits
+                } else {
+                    chars.by_ref().take(4).collect()
+                };
+                decoded.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+            }
+            escaped => decoded.push(escaped),
+        }
+    }
+    Some(decoded)
+}
+
+fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, count: usize) -> Option<char> {
+    let digits: String = chars.take(count).collect();
+    (digits.len() == count)
+        .then(|| u32::from_str_radix(&digits, 16).ok())
+        .flatten()
+        .and_then(char::from_u32)
 }
 
 /// Extract the module path string from an import_statement node.
@@ -2810,6 +2905,7 @@ mod tests {
                 type_only,
                 side_effect,
                 attribute_clause,
+                attribute_type,
             } => {
                 assert_eq!(default_import.as_deref(), Some("Default"));
                 assert_eq!(namespace_import, &None);
@@ -2817,6 +2913,7 @@ mod tests {
                 assert!(!type_only);
                 assert!(!side_effect);
                 assert_eq!(attribute_clause, &None);
+                assert_eq!(attribute_type, &None);
             }
             other => panic!("expected Es, got {other:?}"),
         }
@@ -3260,7 +3357,10 @@ import { Config } from '../config';
 
     #[test]
     fn parse_es_import_attributes_preserve_standard_and_legacy_spellings() {
-        let source = "import data from './data.json' with { type: 'json' };\nimport legacy from './legacy.json' assert { type: 'json' };\n";
+        let source = r#"import data from './data.json' with { type: 'json' };
+import legacy from './legacy.json' assert { type: 'json' };
+import escaped from './escaped.json' with { "t\u0079pe": "j\u0073on" };
+"#;
         let (_, block) = parse_js(source);
 
         assert_eq!(
@@ -3271,6 +3371,8 @@ import { Config } from '../config';
             es_import_attribute_clause(&block.imports[1]),
             Some("assert { type: 'json' }")
         );
+        assert_eq!(es_import_attribute_type(&block.imports[0]), Some("json"));
+        assert_eq!(es_import_attribute_type(&block.imports[2]), Some("json"));
     }
 
     #[test]
