@@ -83,7 +83,7 @@ import { buildOpenCodeToolMap } from "./tool-registration.js";
 import { bashToolDescription } from "./tools/bash.js";
 import { createInspectTier2IdleScheduler } from "./tools/inspect.js";
 import type { PluginContext } from "./types.js";
-import { buildHintsFromConfig } from "./workflow-hints.js";
+import { appendHintsToSystem, buildHintsFromConfig } from "./workflow-hints.js";
 
 type BashPatternMatchPayload = {
   session_id: string;
@@ -1079,9 +1079,11 @@ async function initializePluginForDirectory(input: Parameters<Plugin>[0]) {
       _input: { sessionID?: string; model: unknown },
       output: { system: string[] },
     ) => {
-      if (hintsBlock) {
-        output.system.push(hintsBlock);
-      }
+      if (!hintsBlock) return;
+      // Extend the existing entry instead of pushing a second system
+      // message; strict Qwen-family templates reject non-leading system
+      // messages. Mechanism documented on appendHintsToSystem.
+      appendHintsToSystem(output.system, hintsBlock);
     },
     event: async (eventInput: { event: { type: string; properties?: unknown } }) => {
       await autoUpdateEventHook(eventInput);

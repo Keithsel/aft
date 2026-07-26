@@ -179,3 +179,22 @@ export function buildHintsFromConfig(config: AftConfig, disabledTools: Set<strin
     disabledTools,
   });
 }
+
+/**
+ * Fold the hints block into a host `system[]` array in place.
+ *
+ * Each `system[]` entry becomes its own `role:"system"` message on the wire,
+ * and Qwen-family chat templates (vLLM/SGLang, and LiteLLM fronting them)
+ * reject any system message past index 0 — so the block must extend the
+ * existing entry rather than arrive as a second message. Exported separately
+ * from the plugin wiring so the single-message property is unit-testable.
+ */
+export function appendHintsToSystem(system: string[], hintsBlock: string): void {
+  if (!hintsBlock) return;
+  if (system.length > 0) {
+    const last = system.length - 1;
+    system[last] = `${system[last]}\n\n${hintsBlock}`;
+  } else {
+    system.push(hintsBlock);
+  }
+}
