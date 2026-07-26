@@ -188,6 +188,11 @@ fn normalize_edit_arguments(map: &mut Map<String, Value>) -> Result<(), Translat
     }
 
     let modes = edit_modes_present(map);
+    if has_orphaned_symbol_content(map) {
+        return Err(invalid_request(
+            "edit: 'content' requires a non-empty string 'symbol' when symbol mode is selected",
+        ));
+    }
     if modes.len() > 1 {
         return Err(invalid_request(format!(
             "edit: conflicting modes: {}",
@@ -264,24 +269,80 @@ fn normalize_edit_path_alias(map: &mut Map<String, Value>) -> Result<(), Transla
     }
 }
 
-fn edit_modes_present(map: &Map<String, Value>) -> Vec<&'static str> {
+fn edit_modes_present(map: &mut Map<String, Value>) -> Vec<&'static str> {
+    // Some hosts serialize every optional field with an empty sentinel. Remove
+    // fields that cannot select a mode so later translation cannot revive them.
+    let has_append_content = is_non_empty_string(map.get("appendContent"));
+    if !has_append_content {
+        map.remove("appendContent");
+    }
+
+    let has_edits = is_non_empty_edit_array(map.get("edits"));
+    if !has_edits {
+        map.remove("edits");
+    }
+
+    let has_symbol = is_non_empty_string(map.get("symbol"));
+    if !has_symbol {
+        map.remove("symbol");
+        if map.get("content").is_some_and(|value| {
+            value.is_null() || matches!(value, Value::String(value) if value.is_empty())
+        }) {
+            map.remove("content");
+        }
+    } else if matches!(map.get("content"), Some(Value::Null)) {
+        map.remove("content");
+    }
+
+    let has_single_edit = is_non_empty_string(map.get("oldString"));
+    if !has_single_edit {
+        for key in ["oldString", "newString", "replaceAll", "occurrence"] {
+            map.remove(key);
+        }
+    } else {
+        for key in ["newString", "replaceAll", "occurrence"] {
+            if matches!(map.get(key), Some(Value::Null)) {
+                map.remove(key);
+            }
+        }
+    }
+
     let mut modes = Vec::new();
-    if map.contains_key("appendContent") {
+    if has_append_content {
         modes.push("appendContent");
     }
-    if map.contains_key("edits") {
+    if has_edits {
         modes.push("edits");
     }
-    if map.contains_key("symbol") || map.contains_key("content") {
+    if has_symbol {
         modes.push("symbol/content");
     }
-    if ["oldString", "newString", "replaceAll", "occurrence"]
-        .iter()
-        .any(|key| map.contains_key(*key))
-    {
+    if has_single_edit {
         modes.push("oldString/newString");
     }
     modes
+}
+
+fn is_non_empty_string(value: Option<&Value>) -> bool {
+    matches!(value, Some(Value::String(value)) if !value.is_empty())
+}
+
+fn is_non_empty_edit_array(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::Array(items)) => !items.is_empty(),
+        Some(Value::String(raw)) if raw.is_empty() => false,
+        Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
+            .ok()
+            .map(|value| !matches!(value, Value::Array(items) if items.is_empty()))
+            // A non-empty malformed string is still an edits claim so the
+            // existing parser can report its specific validation error.
+            .unwrap_or(true),
+        _ => false,
+    }
+}
+
+fn has_orphaned_symbol_content(map: &Map<String, Value>) -> bool {
+    is_non_empty_string(map.get("content")) && !is_non_empty_string(map.get("symbol"))
 }
 
 fn format_unknown_keys(mut keys: Vec<String>) -> String {
@@ -2335,8 +2396,136 @@ mod tests {
     }
 
     #[test]
+    fn edit_normalization_uses_meaningful_mode_presence() {
+        let project = Path::new("/project");
+        let cases = [
+            (
+                "edits ignores empty mode sentinels",
+                serde_json::json!({
+                    "filePath": "src/example.ts",
+                    "edits": [{ "oldString": "old", "newString": "new" }],
+                    "appendContent": "",
+                    "symbol": "",
+                    "content": "",
+                }),
+                Some("batch"),
+                None,
+            ),
+            (
+                "append ignores empty edits",
+                serde_json::json!({
+                    "filePath": "src/example.ts",
+                    "appendContent": "append",
+                    "edits": [],
+                }),
+                Some("edit_match"),
+                None,
+            ),
+            (
+                "symbol deletion keeps empty content",
+                serde_json::json!({
+                    "filePath": "src/example.ts",
+                    "symbol": "target",
+                    "content": "",
+                }),
+                Some("edit_symbol"),
+                None,
+            ),
+            (
+                "content without a symbol is rejected",
+                serde_json::json!({
+                    "filePath": "src/example.ts",
+                    "symbol": "",
+                    "content": "replacement",
+                }),
+                None,
+                Some("requires a non-empty string 'symbol'"),
+            ),
+            (
+                "two real modes conflict",
+                serde_json::json!({
+                    "filePath": "src/example.ts",
+                    "appendContent": "append",
+                    "edits": [{ "oldString": "old", "newString": "new" }],
+                }),
+                None,
+                Some("conflicting modes"),
+            ),
+            (
+                "all empty fields have no mode",
+                serde_json::json!({
+                    "filePath": "src/example.ts",
+                    "appendContent": "",
+                    "edits": [],
+                    "symbol": "",
+                    "content": "",
+                    "oldString": "",
+                    "newString": "",
+                    "replaceAll": null,
+                    "occurrence": null,
+                }),
+                None,
+                Some("exactly one of"),
+            ),
+        ];
+
+        for (label, arguments, command, expected_error) in cases {
+            match (command, expected_error) {
+                (Some(command), None) => {
+                    let translated = subc_translate_owned("edit", arguments, project)
+                        .unwrap_or_else(|error| panic!("{label}: {}", error.message));
+                    assert_eq!(translated.command, command, "{label}");
+                    match label {
+                        "edits ignores empty mode sentinels" => {
+                            assert_eq!(
+                                translated.args["edits"][0]["match"],
+                                Value::String("old".to_string())
+                            );
+                            assert_eq!(
+                                translated.args["edits"][0]["replacement"],
+                                Value::String("new".to_string())
+                            );
+                        }
+                        "append ignores empty edits" => {
+                            assert_eq!(
+                                translated.args["append_content"],
+                                Value::String("append".to_string())
+                            );
+                        }
+                        "symbol deletion keeps empty content" => {
+                            assert_eq!(translated.args["content"], Value::String(String::new()));
+                        }
+                        _ => unreachable!("unexpected successful edit mode case"),
+                    }
+                }
+                (None, Some(expected_error)) => {
+                    let translation_error = subc_translate_owned("edit", arguments, project)
+                        .expect_err("meaningful mode case must fail");
+                    assert!(
+                        translation_error.message.contains(expected_error),
+                        "{label}: {}",
+                        translation_error.message
+                    );
+                }
+                _ => unreachable!("case must expect exactly one outcome"),
+            }
+        }
+    }
+
+    #[test]
     fn edit_normalization_accepts_aliases_and_rejects_ambiguous_scalars() {
         let project = Path::new("/project");
+        let stringified = subc_translate_owned(
+            "edit",
+            serde_json::json!({
+                "path": "src/main.ts",
+                "edits": "[{\"oldString\":\"before\",\"newString\":\"after\"}]"
+            }),
+            project,
+        )
+        .expect("stringified non-empty edits array");
+        assert_eq!(stringified.command, "batch");
+
         let normalized = subc_translate_owned(
             "edit",
             serde_json::json!({

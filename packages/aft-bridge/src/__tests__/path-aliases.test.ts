@@ -107,6 +107,81 @@ describe("canonical path alias preparation", () => {
 });
 
 describe("edit boundary preparation", () => {
+  const meaningfulModeCases: Array<{
+    label: string;
+    input: Record<string, unknown>;
+    expected?: Record<string, unknown>;
+    error?: string;
+  }> = [
+    {
+      label: "edits ignores empty mode sentinels",
+      input: {
+        filePath: "src/example.ts",
+        edits: [{ oldString: "old", newString: "new" }],
+        appendContent: "",
+        symbol: "",
+        content: "",
+      },
+      expected: {
+        path: "src/example.ts",
+        edits: [{ oldString: "old", newString: "new" }],
+      },
+    },
+    {
+      label: "append ignores empty edits",
+      input: {
+        filePath: "src/example.ts",
+        appendContent: "append",
+        edits: [],
+      },
+      expected: { path: "src/example.ts", appendContent: "append" },
+    },
+    {
+      label: "symbol deletion keeps empty content",
+      input: { filePath: "src/example.ts", symbol: "target", content: "" },
+      expected: { path: "src/example.ts", symbol: "target", content: "" },
+    },
+    {
+      label: "content without a symbol is rejected",
+      input: { filePath: "src/example.ts", symbol: "", content: "replacement" },
+      error: "requires a non-empty string 'symbol'",
+    },
+    {
+      label: "two real modes conflict",
+      input: {
+        filePath: "src/example.ts",
+        appendContent: "append",
+        edits: [{ oldString: "old", newString: "new" }],
+      },
+      error: "conflicting modes",
+    },
+    {
+      label: "all empty fields have no mode",
+      input: {
+        filePath: "src/example.ts",
+        appendContent: "",
+        edits: [],
+        symbol: "",
+        content: "",
+        oldString: "",
+        newString: "",
+        replaceAll: null,
+        occurrence: null,
+      },
+      error: "exactly one of",
+    },
+  ];
+
+  for (const { label, input, expected, error } of meaningfulModeCases) {
+    test(label, () => {
+      if (error) {
+        expect(() => prepareCanonicalEditArguments("edit", input)).toThrow(error);
+      } else {
+        expect(prepareCanonicalEditArguments("edit", input)).toEqual(expected);
+      }
+    });
+  }
+
   test("applies mode conflict precedence before parsing stringified edits", () => {
     expect(() =>
       prepareCanonicalEditArguments("edit", {
@@ -122,12 +197,21 @@ describe("edit boundary preparation", () => {
         edits: "not-json",
       }),
     ).toThrow("valid JSON");
+    expect(
+      prepareCanonicalEditArguments("edit", {
+        path: "src/main.ts",
+        edits: '[{"oldString":"before","newString":"after"}]',
+      }),
+    ).toEqual({
+      path: "src/main.ts",
+      edits: [{ oldString: "before", newString: "after" }],
+    });
     expect(() =>
       prepareCanonicalEditArguments("edit", {
         path: "src/main.ts",
         edits: "[]",
       }),
-    ).toThrow("must not be empty");
+    ).toThrow("exactly one of");
   });
 
   test("keeps canonical-only path validation after edit contract validation", () => {

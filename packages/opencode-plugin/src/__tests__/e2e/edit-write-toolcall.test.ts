@@ -191,6 +191,9 @@ export function runEditWriteToolcallSuite(
           { oldString: "one", newString: "ONE" },
           { startLine: 3, endLine: 3, content: "THREE" },
         ],
+        appendContent: "",
+        symbol: "",
+        content: "",
       });
 
       expect(await readTextFile(h.path("batch.txt"))).toBe("ONE\ntwo\nTHREE\n");

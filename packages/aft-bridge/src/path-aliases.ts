@@ -299,6 +299,11 @@ export function prepareCanonicalEditArguments(
   }
 
   const modes = editModesPresent(record);
+  if (hasOrphanedSymbolContent(record)) {
+    throw new InvalidRequestError(
+      "edit: 'content' requires a non-empty string 'symbol' when symbol mode is selected",
+    );
+  }
   if (modes.length > 1) {
     throw new InvalidRequestError(`edit: conflicting modes: ${modes.join(", ")}`);
   }
@@ -384,14 +389,58 @@ function formatUnknownKeys(keys: string[]): string {
 }
 
 function editModesPresent(record: Record<string, unknown>): string[] {
-  const modes: string[] = [];
-  if (hasOwn(record, "appendContent")) modes.push("appendContent");
-  if (hasOwn(record, "edits")) modes.push("edits");
-  if (hasOwn(record, "symbol") || hasOwn(record, "content")) modes.push("symbol/content");
-  if (["oldString", "newString", "replaceAll", "occurrence"].some((key) => hasOwn(record, key))) {
-    modes.push("oldString/newString");
+  // Some hosts serialize every optional field with an empty sentinel. Remove
+  // fields that cannot select a mode so later translation cannot revive them.
+  const hasAppendContent = isNonEmptyString(record.appendContent);
+  if (!hasAppendContent) delete record.appendContent;
+
+  const hasEdits = isNonEmptyEditArray(record.edits);
+  if (!hasEdits) delete record.edits;
+
+  const hasSymbol = isNonEmptyString(record.symbol);
+  if (!hasSymbol) {
+    delete record.symbol;
+    if (record.content === null || record.content === "") delete record.content;
+  } else if (record.content === null) {
+    delete record.content;
   }
+
+  const hasSingleEdit = isNonEmptyString(record.oldString);
+  if (!hasSingleEdit) {
+    for (const key of EDIT_ROOT_COMPATIBILITY_KEYS) delete record[key];
+  } else {
+    for (const key of ["newString", "replaceAll", "occurrence"]) {
+      if (record[key] === null) delete record[key];
+    }
+  }
+
+  const modes: string[] = [];
+  if (hasAppendContent) modes.push("appendContent");
+  if (hasEdits) modes.push("edits");
+  if (hasSymbol) modes.push("symbol/content");
+  if (hasSingleEdit) modes.push("oldString/newString");
   return modes;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isNonEmptyEditArray(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value !== "string" || value.length === 0) return false;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return !Array.isArray(parsed) || parsed.length > 0;
+  } catch {
+    // A non-empty malformed string is still an edits claim so the existing
+    // parser can report its specific validation error instead of no-mode.
+    return true;
+  }
+}
+
+function hasOrphanedSymbolContent(record: Record<string, unknown>): boolean {
+  return isNonEmptyString(record.content) && !isNonEmptyString(record.symbol);
 }
 
 function parseEditArray(value: unknown): unknown[] {

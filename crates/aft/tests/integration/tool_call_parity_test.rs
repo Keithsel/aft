@@ -235,6 +235,40 @@ fn edit_contract_translation_preserves_exact_code_then_message() {
 }
 
 #[test]
+fn edit_tool_call_applies_edits_with_empty_optional_mode_sentinels() {
+    let project = tempfile::tempdir().expect("tool_call edit temp project");
+    let target = project.path().join("src/example.ts");
+    fs::create_dir_all(target.parent().expect("example parent")).expect("create src directory");
+    fs::write(&target, "const value = old;\n").expect("write edit fixture");
+
+    let mut aft = AftProcess::spawn();
+    configure_project(&mut aft, project.path(), "cfg-edit-empty-sentinels");
+    let response = send_json(
+        &mut aft,
+        json!({
+            "id": "tool-call-edit-empty-sentinels",
+            "command": "tool_call",
+            "session_id": SESSION_ID,
+            "name": "edit",
+            "arguments": {
+                "filePath": "src/example.ts",
+                "edits": [{ "oldString": "old", "newString": "new" }],
+                "appendContent": "",
+                "symbol": "",
+                "content": "",
+            },
+        }),
+    );
+
+    assert_eq!(response["success"], true, "edit failed: {response:#}");
+    assert_eq!(
+        fs::read_to_string(target).expect("read edited fixture"),
+        "const value = new;\n"
+    );
+    assert!(aft.shutdown().success());
+}
+
+#[test]
 fn unsupported_translate_tools_still_raw_dispatch_native_commands() {
     let project = tempfile::tempdir().expect("tool_call configure temp project");
     let mut aft = AftProcess::spawn();
