@@ -91,7 +91,10 @@ fn validate_checkpoint_files(
 ) -> Result<Vec<PathBuf>, Response> {
     let mut validated = Vec::with_capacity(files.len());
     for path in files {
-        validated.push(ctx.validate_path(req_id, &path)?);
+        // Creation and restore must authorize and key the same final object.
+        // Resolving only ancestors preserves a final symlink for the snapshot
+        // reader while still rejecting symlinked parents that escape the root.
+        validated.push(ctx.validate_write_location(req_id, &path)?);
     }
     Ok(validated)
 }

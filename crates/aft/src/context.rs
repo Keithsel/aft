@@ -5852,9 +5852,9 @@ impl AppContext {
 
     /// Validate a write location without following its final path component.
     ///
-    /// Restores use this mode because the final component is the object being
-    /// replaced. Following a symlink there would authorize its target and would
-    /// also change the stored key used to find the snapshot. Every ancestor is
+    /// Checkpoint creation and restore use this mode because the final component
+    /// is the object being preserved or replaced. Following a symlink there would
+    /// authorize its target and change the stored snapshot key. Every ancestor is
     /// still resolved so a symlinked parent cannot escape the project root.
     pub fn validate_write_location(
         &self,

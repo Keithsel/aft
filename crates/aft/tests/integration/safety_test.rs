@@ -32,13 +32,15 @@ fn temp_dir(test_name: &str) -> std::path::PathBuf {
 }
 
 fn configure_restricted(aft: &mut AftProcess, root: &std::path::Path, request_id: &str) {
+    let user_config_path = root.join(format!(".aft-user-config-{request_id}.jsonc"));
+    fs::write(&user_config_path, r#"{"restrict_to_project_root": true}"#).unwrap();
     let response = aft.send(
         &serde_json::to_string(&serde_json::json!({
             "id": request_id,
             "command": "configure",
             "harness": "opencode",
             "project_root": root.display().to_string(),
-            "config": user_config(serde_json::json!({ "restrict_to_project_root": true })),
+            "cortexkit_user_config_path": user_config_path.display().to_string(),
         }))
         .unwrap(),
     );
@@ -1129,6 +1131,220 @@ fn checkpoint_paths_reports_restore_targets_without_mutating() {
     let status = aft.shutdown();
     assert!(status.success());
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn restricted_checkpoint_creation_preserves_in_root_final_symlink() {
+    let container = tempfile::tempdir().unwrap();
+    let root = container.path().join("project");
+    let outside = container.path().join("outside.txt");
+    fs::create_dir_all(&root).unwrap();
+    let root = fs::canonicalize(root).unwrap();
+    let target = root.join("target.txt");
+    let link = root.join("link.txt");
+    fs::write(&outside, "outside-control").unwrap();
+    fs::write(&target, "checkpoint-target").unwrap();
+    std::os::unix::fs::symlink("target.txt", &link).unwrap();
+
+    let mut aft = AftProcess::spawn();
+    configure_restricted(&mut aft, &root, "cfg-checkpoint-final-symlink");
+
+    let control = aft.send(
+        &serde_json::to_string(&serde_json::json!({
+            "id": "read-outside-control",
+            "command": "read",
+            "file": outside.display().to_string(),
+        }))
+        .unwrap(),
+    );
+    assert_eq!(
+        control["success"], false,
+        "restriction control: {control:?}"
+    );
+    assert_eq!(control["code"], "path_outside_root");
+
+    let create = aft.send(
+        &serde_json::to_string(&serde_json::json!({
+            "id": "checkpoint-final-symlink",
+            "command": "checkpoint",
+            "name": "final-symlink",
+            "files": [link.display().to_string()],
+        }))
+        .unwrap(),
+    );
+    assert_eq!(create["success"], true, "checkpoint: {create:?}");
+
+    let paths = aft.send(
+        r#"{"id":"paths-final-symlink","command":"checkpoint_paths","name":"final-symlink"}"#,
+    );
+    assert_eq!(paths["success"], true, "checkpoint paths: {paths:?}");
+    assert_eq!(
+        paths["paths"],
+        serde_json::json!([link.display().to_string()])
+    );
+
+    fs::remove_file(&link).unwrap();
+    fs::write(&link, "replacement-file").unwrap();
+    fs::write(&target, "modified-target").unwrap();
+
+    let restore = aft.send(
+        r#"{"id":"restore-final-symlink","command":"restore_checkpoint","name":"final-symlink"}"#,
+    );
+    assert_eq!(restore["success"], true, "restore: {restore:?}");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&link).unwrap(),
+        std::path::Path::new("target.txt")
+    );
+    assert_eq!(fs::read_to_string(&target).unwrap(), "modified-target");
+
+    let status = aft.shutdown();
+    assert!(status.success());
+}
+
+#[cfg(unix)]
+#[test]
+fn restricted_checkpoint_creation_rejects_symlinked_parent_escape() {
+    let container = tempfile::tempdir().unwrap();
+    let root = container.path().join("project");
+    let outside = container.path().join("outside");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    let outside_file = outside.join("external.txt");
+    fs::write(&outside_file, "external-original").unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+
+    let mut aft = AftProcess::spawn();
+    configure_restricted(&mut aft, &root, "cfg-checkpoint-parent-escape");
+    let create = aft.send(
+        &serde_json::to_string(&serde_json::json!({
+            "id": "checkpoint-parent-escape",
+            "command": "checkpoint",
+            "name": "parent-escape",
+            "files": [root.join("escape/external.txt").display().to_string()],
+        }))
+        .unwrap(),
+    );
+
+    assert_eq!(create["success"], false, "checkpoint: {create:?}");
+    assert_eq!(create["code"], "path_outside_root");
+    assert_eq!(
+        fs::read_to_string(&outside_file).unwrap(),
+        "external-original"
+    );
+
+    let status = aft.shutdown();
+    assert!(status.success());
+}
+
+#[test]
+fn checkpoint_regular_file_keys_and_restores_identically_when_restricted() {
+    let container = tempfile::tempdir().unwrap();
+    let root = container.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    let root = fs::canonicalize(root).unwrap();
+    let file = root.join("ordinary.txt");
+    let mut checkpoint_paths = Vec::new();
+
+    for (restricted, label) in [(false, "unrestricted"), (true, "restricted")] {
+        fs::write(&file, "checkpoint-ordinary").unwrap();
+        let mut aft = AftProcess::spawn();
+        if restricted {
+            configure_restricted(&mut aft, &root, "cfg-checkpoint-ordinary");
+        }
+
+        let create = aft.send(
+            &serde_json::to_string(&serde_json::json!({
+                "id": format!("checkpoint-ordinary-{label}"),
+                "command": "checkpoint",
+                "name": "ordinary",
+                "files": [file.display().to_string()],
+            }))
+            .unwrap(),
+        );
+        assert_eq!(create["success"], true, "checkpoint {label}: {create:?}");
+
+        let paths =
+            aft.send(r#"{"id":"paths-ordinary","command":"checkpoint_paths","name":"ordinary"}"#);
+        assert_eq!(
+            paths["success"], true,
+            "checkpoint paths {label}: {paths:?}"
+        );
+        checkpoint_paths.push(paths["paths"].clone());
+
+        fs::write(&file, "modified-ordinary").unwrap();
+        let restore = aft
+            .send(r#"{"id":"restore-ordinary","command":"restore_checkpoint","name":"ordinary"}"#);
+        assert_eq!(restore["success"], true, "restore {label}: {restore:?}");
+        assert_eq!(fs::read_to_string(&file).unwrap(), "checkpoint-ordinary");
+
+        let status = aft.shutdown();
+        assert!(status.success());
+    }
+
+    assert_eq!(checkpoint_paths[0], checkpoint_paths[1]);
+    assert_eq!(
+        checkpoint_paths[0],
+        serde_json::json!([file.display().to_string()])
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn restricted_checkpoint_creation_preserves_external_target_symlink() {
+    let container = tempfile::tempdir().unwrap();
+    let root = container.path().join("project");
+    let outside = container.path().join("external.txt");
+    fs::create_dir_all(&root).unwrap();
+    let root = fs::canonicalize(root).unwrap();
+    let link = root.join("link.txt");
+    fs::write(&outside, "external-original").unwrap();
+    std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+    let mut aft = AftProcess::spawn();
+    configure_restricted(&mut aft, &root, "cfg-checkpoint-external-link");
+    let create = aft.send(
+        &serde_json::to_string(&serde_json::json!({
+            "id": "checkpoint-external-link",
+            "command": "checkpoint",
+            "name": "external-link",
+            "files": [link.display().to_string()],
+        }))
+        .unwrap(),
+    );
+    assert_eq!(create["success"], true, "checkpoint: {create:?}");
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "external-original");
+
+    let paths = aft.send(
+        r#"{"id":"paths-external-link","command":"checkpoint_paths","name":"external-link"}"#,
+    );
+    assert_eq!(paths["success"], true, "checkpoint paths: {paths:?}");
+    assert_eq!(
+        paths["paths"],
+        serde_json::json!([link.display().to_string()])
+    );
+
+    fs::remove_file(&link).unwrap();
+    fs::write(&link, "replacement-file").unwrap();
+    fs::write(&outside, "external-modified").unwrap();
+
+    let restore = aft.send(
+        r#"{"id":"restore-external-link","command":"restore_checkpoint","name":"external-link"}"#,
+    );
+    assert_eq!(restore["success"], true, "restore: {restore:?}");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_link(&link).unwrap(), outside);
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "external-modified");
+
+    let status = aft.shutdown();
+    assert!(status.success());
 }
 
 #[cfg(unix)]
