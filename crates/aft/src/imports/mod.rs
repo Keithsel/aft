@@ -1458,14 +1458,18 @@ fn parse_single_ts_import(source: &str, node: &Node) -> Option<ImportStatement> 
 
     let group = classify_group_ts(&module_path);
 
+    let attribute_clause = extract_es_import_attribute_clause(source, node);
+    let attribute_type = attribute_clause
+        .as_deref()
+        .and_then(parse_es_import_attribute_type);
     let form = ImportForm::Es {
         default_import: default_import.clone(),
         namespace_import: namespace_import.clone(),
         named: names.clone(),
         type_only: is_type_only,
         side_effect: matches!(kind, ImportKind::SideEffect),
-        attribute_clause: extract_es_import_attribute_clause(source, node),
-        attribute_type: find_type_attribute(source, *node),
+        attribute_clause,
+        attribute_type,
     };
 
     Some(ImportStatement {
@@ -1520,6 +1524,26 @@ pub(crate) fn es_import_attribute_type(imp: &ImportStatement) -> Option<&str> {
         ImportForm::Es { attribute_type, .. } => attribute_type.as_deref(),
         _ => None,
     }
+}
+
+/// Decode the module type through one canonical parse. Legacy `assert` and current
+/// `with` clauses carry the same attribute semantics even though their spelling
+/// must remain unchanged when the original import is rewritten.
+fn parse_es_import_attribute_type(clause: &str) -> Option<String> {
+    let body = ["with", "assert"].into_iter().find_map(|keyword| {
+        let rest = clause.strip_prefix(keyword)?;
+        rest.chars()
+            .next()
+            .is_some_and(|ch| ch.is_whitespace() || ch == '{' || ch == '/')
+            .then_some(rest)
+    })?;
+    let synthetic = format!("import 'module' with{body};");
+    let mut parser = Parser::new();
+    parser.set_language(&grammar_for(LangId::TypeScript)).ok()?;
+    let tree = parser.parse(&synthetic, None)?;
+    (!tree.root_node().has_error())
+        .then(|| find_type_attribute(&synthetic, tree.root_node()))
+        .flatten()
 }
 
 fn find_type_attribute(source: &str, node: Node<'_>) -> Option<String> {
@@ -3372,6 +3396,7 @@ import escaped from './escaped.json' with { "t\u0079pe": "j\u0073on" };
             Some("assert { type: 'json' }")
         );
         assert_eq!(es_import_attribute_type(&block.imports[0]), Some("json"));
+        assert_eq!(es_import_attribute_type(&block.imports[1]), Some("json"));
         assert_eq!(es_import_attribute_type(&block.imports[2]), Some("json"));
     }
 

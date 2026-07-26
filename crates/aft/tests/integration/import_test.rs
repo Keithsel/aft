@@ -23,6 +23,22 @@ fn assert_node_succeeds(file: &Path, context: &str) -> Output {
     output
 }
 
+/// Node 24 no longer parses legacy `assert` clauses. Execute a temporary `with`
+/// spelling of the same clause to adjudicate module semantics without changing
+/// the fixture whose legacy spelling the import engine must preserve.
+fn assert_node_import_semantics_succeed(file: &Path, context: &str) -> Output {
+    let source = fs::read_to_string(file).unwrap();
+    if !source.contains(" assert {") {
+        return assert_node_succeeds(file, context);
+    }
+
+    let runtime_file = file.with_extension("node-with.mjs");
+    fs::write(&runtime_file, source.replacen(" assert {", " with {", 1)).unwrap();
+    let output = assert_node_succeeds(&runtime_file, context);
+    fs::remove_file(runtime_file).unwrap();
+    output
+}
+
 /// Helper: copy a fixture to a uniquely-named temp file for mutation testing.
 fn temp_copy(fixture_name: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2858,75 +2874,85 @@ fn add_and_partial_remove_preserve_es_import_attributes() {
     let mut aft = AftProcess::spawn();
     let dir = tempfile::tempdir().unwrap();
     let module = dir.path().join("config.json");
-    let file = dir.path().join("attributes.mjs");
     fs::write(&module, "{\"ok\":true}\n").unwrap();
-    fs::write(
-        &file,
-        "import config from './config.json' with { type: 'json' };\nconsole.log(config.ok);\n",
-    )
-    .unwrap();
-    assert_eq!(
-        assert_node_succeeds(&file, "JSON default import before alias merge")
-            .status
-            .code(),
-        Some(0)
-    );
     aft.send(&format!(
         r#"{{"id":"cfg-attrs-mutate","command":"configure","harness":"opencode","project_root":{}}}"#,
         crate::helpers::json_string(&dir.path().display())
     ));
 
-    let add = send_add_import(
-        &mut aft,
-        "add-attrs",
-        file.to_str().unwrap(),
-        "./config.json",
-        Some(&["default as configAlias"]),
-        None,
-        false,
-    );
-    assert_eq!(add["success"], true, "add should succeed: {add:?}");
-    let after_add = fs::read_to_string(&file).unwrap();
-    assert_eq!(after_add.matches("./config.json").count(), 1, "{after_add}");
-    assert!(
-        after_add.contains(
-            "import config, { default as configAlias } from './config.json' with { type: 'json' };"
-        ) || after_add.contains(
-            "import config, { default as configAlias } from \"./config.json\" with { type: 'json' };"
-        ),
-        "a legal alias of the JSON default export should merge without dropping its attribute:\n{after_add}"
-    );
-    assert_eq!(
-        assert_node_succeeds(&file, "JSON default alias after merge")
+    for keyword in ["with", "assert"] {
+        let file = dir.path().join(format!("attributes-{keyword}.mjs"));
+        let clause = format!(r#"{keyword} {{ type: "json" }}"#);
+        fs::write(
+            &file,
+            format!("import config from './config.json' {clause};\nconsole.log(config.ok);\n"),
+        )
+        .unwrap();
+        assert_eq!(
+            assert_node_import_semantics_succeed(
+                &file,
+                &format!("JSON default import before {keyword} alias merge")
+            )
             .status
             .code(),
-        Some(0)
-    );
+            Some(0)
+        );
 
-    let remove = send_remove_import(
-        &mut aft,
-        "remove-attrs",
-        file.to_str().unwrap(),
-        "./config.json",
-        Some("configAlias"),
-    );
-    assert_eq!(remove["success"], true, "remove should succeed: {remove:?}");
-    let after_remove = fs::read_to_string(&file).unwrap();
-    assert!(
-        after_remove.contains("with { type: 'json' }"),
-        "{after_remove}"
-    );
-    assert!(
-        after_remove.contains("import config from"),
-        "{after_remove}"
-    );
-    assert!(!after_remove.contains("configAlias"), "{after_remove}");
-    assert_eq!(
-        assert_node_succeeds(&file, "JSON default import after partial removal")
+        let add = send_add_import(
+            &mut aft,
+            &format!("add-attrs-{keyword}"),
+            file.to_str().unwrap(),
+            "./config.json",
+            Some(&["default as configAlias"]),
+            None,
+            false,
+        );
+        assert_eq!(add["success"], true, "add should succeed: {add:?}");
+        let after_add = fs::read_to_string(&file).unwrap();
+        assert_eq!(after_add.matches("./config.json").count(), 1, "{after_add}");
+        assert!(
+            after_add.contains(&format!(
+                "import config, {{ default as configAlias }} from './config.json' {clause};"
+            )) || after_add.contains(&format!(
+                "import config, {{ default as configAlias }} from \"./config.json\" {clause};"
+            )),
+            "a legal alias of the JSON default export should merge without dropping its {keyword} attribute:\n{after_add}"
+        );
+        assert_eq!(
+            assert_node_import_semantics_succeed(
+                &file,
+                &format!("JSON default alias after {keyword} merge")
+            )
             .status
             .code(),
-        Some(0)
-    );
+            Some(0)
+        );
+
+        let remove = send_remove_import(
+            &mut aft,
+            &format!("remove-attrs-{keyword}"),
+            file.to_str().unwrap(),
+            "./config.json",
+            Some("configAlias"),
+        );
+        assert_eq!(remove["success"], true, "remove should succeed: {remove:?}");
+        let after_remove = fs::read_to_string(&file).unwrap();
+        assert!(after_remove.contains(&clause), "{after_remove}");
+        assert!(
+            after_remove.contains("import config from"),
+            "{after_remove}"
+        );
+        assert!(!after_remove.contains("configAlias"), "{after_remove}");
+        assert_eq!(
+            assert_node_import_semantics_succeed(
+                &file,
+                &format!("JSON default import after {keyword} partial removal")
+            )
+            .status
+            .code(),
+            Some(0)
+        );
+    }
 
     aft.shutdown();
 }
@@ -2936,65 +2962,116 @@ fn add_import_rejects_non_default_json_named_export_without_mutation_or_backup()
     let mut aft = AftProcess::spawn();
     let dir = tempfile::tempdir().unwrap();
     let module = dir.path().join("config.json");
-    let file = dir.path().join("reject-json-name.mjs");
     fs::write(&module, "{\"ok\":true}\n").unwrap();
-    let original =
-        "import config from './config.json' with { type: 'json' };\nconsole.log(config.ok);\n";
-    fs::write(&file, original).unwrap();
     aft.send(&format!(
         r#"{{"id":"cfg-json-reject","command":"configure","harness":"opencode","project_root":{}}}"#,
         crate::helpers::json_string(&dir.path().display())
     ));
 
-    assert_eq!(
-        assert_node_succeeds(&file, "JSON default import before rejected add")
+    for (keyword, quote, quote_name) in [
+        ("with", "\"", "double"),
+        ("with", "'", "single"),
+        ("assert", "\"", "double"),
+        ("assert", "'", "single"),
+    ] {
+        let case = format!("{keyword}-{quote_name}");
+        let clause = format!("{keyword} {{ type: {quote}json{quote} }}");
+        let file = dir.path().join(format!("reject-json-name-{case}.mjs"));
+        let original =
+            format!("import config from './config.json' {clause};\nconsole.log(config.ok);\n");
+        fs::write(&file, &original).unwrap();
+
+        assert_eq!(
+            assert_node_import_semantics_succeed(
+                &file,
+                &format!("JSON default import before rejected {case} add")
+            )
             .status
             .code(),
-        Some(0)
-    );
+            Some(0)
+        );
+        let add = send_add_import(
+            &mut aft,
+            &format!("add-invalid-json-name-{case}"),
+            file.to_str().unwrap(),
+            "./config.json",
+            Some(&["extra"]),
+            None,
+            false,
+        );
+
+        assert_eq!(add["success"], false, "add should be refused: {add:?}");
+        assert_eq!(add["code"], "unsupported_json_named_export", "{add:?}");
+        assert!(
+            add["message"].as_str().is_some_and(|message| message
+                .contains("JSON modules expose no named exports other than 'default'")),
+            "the refusal should explain the module constraint: {add:?}"
+        );
+        assert!(
+            add.get("backup_id").is_none(),
+            "a pre-edit refusal must not report a backup: {add:?}"
+        );
+        assert_eq!(fs::read_to_string(&file).unwrap(), original);
+
+        let history = aft.send(&format!(
+            r#"{{"id":"history-json-reject-{case}","command":"edit_history","file":{}}}"#,
+            crate::helpers::json_string(&file.display())
+        ));
+        assert_eq!(
+            history["success"], true,
+            "history should succeed: {history:?}"
+        );
+        assert_eq!(
+            history["entries"],
+            serde_json::json!([]),
+            "a rejected add must not take a backup: {history:?}"
+        );
+        assert_eq!(
+            assert_node_import_semantics_succeed(
+                &file,
+                &format!("JSON default import after rejected {case} add")
+            )
+            .status
+            .code(),
+            Some(0)
+        );
+    }
+
+    aft.shutdown();
+}
+
+#[test]
+fn add_import_allows_named_export_for_non_json_attributed_module() {
+    let mut aft = AftProcess::spawn();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("webassembly-attribute.mjs");
+    fs::write(
+        &file,
+        "import { foo } from './module.wasm' with { type: \"webassembly\" };\nconsole.log(foo);\n",
+    )
+    .unwrap();
+    aft.send(&format!(
+        r#"{{"id":"cfg-wasm-attribute","command":"configure","harness":"opencode","project_root":{}}}"#,
+        crate::helpers::json_string(&dir.path().display())
+    ));
+
     let add = send_add_import(
         &mut aft,
-        "add-invalid-json-name",
+        "add-wasm-name",
         file.to_str().unwrap(),
-        "./config.json",
-        Some(&["extra"]),
+        "./module.wasm",
+        Some(&["bar"]),
         None,
         false,
     );
-
-    assert_eq!(add["success"], false, "add should be refused: {add:?}");
-    assert_eq!(add["code"], "unsupported_json_named_export", "{add:?}");
+    assert_eq!(
+        add["success"], true,
+        "non-JSON module attributes must not trigger the JSON export guard: {add:?}"
+    );
+    let content = fs::read_to_string(file).unwrap();
     assert!(
-        add["message"]
-            .as_str()
-            .is_some_and(|message| message
-                .contains("JSON modules expose no named exports other than 'default'")),
-        "the refusal should explain the module constraint: {add:?}"
-    );
-    assert!(
-        add.get("backup_id").is_none(),
-        "a pre-edit refusal must not report a backup: {add:?}"
-    );
-    assert_eq!(fs::read_to_string(&file).unwrap(), original);
-
-    let history = aft.send(&format!(
-        r#"{{"id":"history-json-reject","command":"edit_history","file":{}}}"#,
-        crate::helpers::json_string(&file.display())
-    ));
-    assert_eq!(
-        history["success"], true,
-        "history should succeed: {history:?}"
-    );
-    assert_eq!(
-        history["entries"],
-        serde_json::json!([]),
-        "a rejected add must not take a backup: {history:?}"
-    );
-    assert_eq!(
-        assert_node_succeeds(&file, "JSON default import after rejected add")
-            .status
-            .code(),
-        Some(0)
+        content.contains("{ bar, foo }") && content.contains("type: \"webassembly\""),
+        "ordinary named exports and the non-JSON attribute should both survive:\n{content}"
     );
 
     aft.shutdown();
