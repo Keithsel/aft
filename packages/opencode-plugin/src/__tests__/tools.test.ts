@@ -98,10 +98,13 @@ describe("Tool round-trips", () => {
     expect(text).toContain("UserId");
     expect(text).toContain("internalHelper");
 
-    // Verify kind abbreviations and exported markers
-    expect(text).toContain("E fn"); // exported function
-    expect(text).toContain("E cls"); // exported class
-    expect(text).toContain("- fn"); // internal function (internalHelper)
+    // Signature lines carry the declaration text itself; the minimal E
+    // marker appears only when the signature lacks a visibility keyword
+    // (TypeScript exports live on the wrapping statement).
+    expect(text).toContain("E function greet"); // exported function
+    expect(text).toContain("E class UserService"); // exported class
+    expect(text).toContain("function internalHelper"); // internal: bare signature
+    expect(text).not.toContain("E function internalHelper");
   });
 
   test("batched zoom surfaces both successes and per-symbol failures", () => {
